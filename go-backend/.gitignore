@@ -1,0 +1,30 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+coinsight-backend
+
+# Go test binary
+*.test
+
+# Go coverage
+*.out
+coverage.html
+
+# Vendor (optional)
+# vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
