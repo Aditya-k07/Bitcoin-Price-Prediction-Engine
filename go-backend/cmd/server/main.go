@@ -76,7 +76,7 @@ func main() {
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second, // Long timeout for ML predictions
+		WriteTimeout: 125 * time.Second, // Long timeout for ML predictions
 		IdleTimeout:  120 * time.Second,
 	}
 
