@@ -6,7 +6,7 @@
 export default function ModelSelector({ activeModel, onModelChange, disabled }) {
   const models = [
     { id: 'xgboost', label: 'XGBoost', tag: 'Aggressive' },
-    { id: 'prophet', label: 'Prophet', tag: 'Conservative' },
+    { id: 'lstm_xgboost', label: 'Hybrid LSTM', tag: 'Deep Learning' },
   ];
 
   return (

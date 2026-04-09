@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error, r2_score
 from xgboost import XGBRegressor
 
 from app.schemas import ModelMetrics
@@ -128,15 +128,47 @@ class XGBoostPredictor:
         # Evaluate RMSE on test set using median model
         y_pred = self.model_median.predict(X_test)
         rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
+        mae = float(mean_absolute_error(y_test, y_pred))
+        r2 = float(r2_score(y_test, y_pred))
+        
+        # MAPE - Mean Absolute Percentage Error
+        mape = float(mean_absolute_percentage_error(y_test, y_pred))
+        
+        # Directional accuracy - percentage of predictions where trend matches actual
+        actual_direction = np.diff(y_test) > 0
+        pred_direction = np.diff(y_pred) > 0
+        directional_accuracy = float(np.mean(actual_direction == pred_direction)) * 100 if len(actual_direction) > 0 else 0.0
+        
+        # F1 Score approximation for regression: calculate on directional accuracy
+        # True Positives = correct uptrend, True Negatives = correct downtrend
+        tp = np.sum((actual_direction) & (pred_direction))
+        tn = np.sum((~actual_direction) & (~pred_direction))
+        fp = np.sum((~actual_direction) & (pred_direction))
+        fn = np.sum((actual_direction) & (~pred_direction))
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        f1_score_val = float(f1) * 100
+        
+        # Accuracy - percentage of predictions within acceptable error threshold (e.g., 2% of mean price)
+        threshold = np.mean(y_test) * 0.02  # 2% threshold
+        accuracy = float(np.mean(np.abs(y_test - y_pred) <= threshold)) * 100
 
         self.metrics = ModelMetrics(
             rmse=rmse,
+            mae=mae,
+            r2_score=r2,
+            mape=mape,
+            f1_score=f1_score_val,
+            accuracy=accuracy,
+            directional_accuracy=directional_accuracy,
             trained_at=datetime.utcnow(),
             num_training_samples=len(X_train),
             num_features=len(feature_columns)
         )
 
-        logger.info(f"XGBoost training complete. RMSE: {rmse:.2f}")
+        logger.info(f"XGBoost training complete. RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.4f}, F1: {f1_score_val:.2f}%, Accuracy: {accuracy:.2f}%")
 
         # Save models to disk
         self._save()

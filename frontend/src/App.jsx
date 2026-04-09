@@ -2,9 +2,9 @@
  * App.jsx — Main CoinSight application.
  *
  * Orchestrates:
- * - Historical data fetching from Go backend (CoinGecko)
- * - Prediction data fetching from Go backend (ML service proxy)
- * - Model switching (XGBoost / Prophet)
+ * - Historical data fetching from CoinGecko API (free tier limited to ~24 days of OHLC)
+ * - Prediction data fetching from ML service (via nginx proxy)
+ * - Model switching (XGBoost / LSTM+XGBoost)
  * - Retrain triggering
  * - Live ticker via WebSocket
  * - Combined chart rendering
@@ -15,6 +15,8 @@ import PriceChart from './components/PriceChart';
 import LiveTicker from './components/LiveTicker';
 import ModelSelector from './components/ModelSelector';
 import RetrainButton from './components/RetrainButton';
+import CurrencySelector from './components/CurrencySelector';
+import ModelMetricsTab from './components/ModelMetricsTab';
 import { fetchHistorical, fetchPredictions, retrainModel } from './services/api';
 
 export default function App() {
@@ -23,8 +25,10 @@ export default function App() {
   const [predictions, setPredictions] = useState([]);
   const [predictionMeta, setPredictionMeta] = useState(null);
   const [activeModel, setActiveModel] = useState('xgboost');
-  const [historicalDays, setHistoricalDays] = useState(90);
+  const [historicalDays, setHistoricalDays] = useState(30); // CoinGecko free tier: ~24 days max OHLC
   const [predictionDays, setPredictionDays] = useState(30);
+  const [currency, setCurrency] = useState('usd');
+  const [activeTab, setActiveTab] = useState('chart'); // 'chart' or 'metrics'
   const [isLoadingChart, setIsLoadingChart] = useState(true);
   const [isLoadingPredictions, setIsLoadingPredictions] = useState(false);
   const [isRetraining, setIsRetraining] = useState(false);
@@ -38,28 +42,35 @@ export default function App() {
   }, []);
 
   // Fetch historical data
-  const loadHistorical = useCallback(async (days) => {
+  const loadHistorical = useCallback(async (days, curr) => {
     try {
       setError(null);
-      const data = await fetchHistorical(days);
+      const data = await fetchHistorical(days, curr);
       setHistoricalData(data.data || []);
     } catch (err) {
       console.error('Failed to load historical data:', err);
-      setError('Failed to load historical data. Is the Go backend running?');
+      setError('Failed to load historical data from CoinGecko. Please check your internet connection.');
     }
   }, []);
 
   // Fetch predictions
-  const loadPredictions = useCallback(async (model, days) => {
+  const loadPredictions = useCallback(async (model, days, curr) => {
     try {
       setIsLoadingPredictions(true);
       setError(null);
-      const data = await fetchPredictions(model, days);
+      const data = await fetchPredictions(model, days, curr);
       setPredictions(data.predictions || []);
       setPredictionMeta({
         model: data.model,
         rmse: data.rmse,
+        mae: data.mae,
+        r2_score: data.r2_score,
+        mape: data.mape,
+        f1_score: data.f1_score,
+        accuracy: data.accuracy,
+        directional_accuracy: data.directional_accuracy,
         trainedAt: data.trained_at,
+        architecture_details: data.architecture_details,
         cached: data.cached,
       });
     } catch (err) {
@@ -72,24 +83,29 @@ export default function App() {
     }
   }, []);
 
-  // Initial data load
+  // Initial data load on mount
   useEffect(() => {
     const loadAll = async () => {
       setIsLoadingChart(true);
-      await loadHistorical(historicalDays);
-      await loadPredictions(activeModel, predictionDays);
-      setIsLoadingChart(false);
+      try {
+        await loadHistorical(historicalDays, currency);
+        await loadPredictions(activeModel, predictionDays, currency);
+      } catch (err) {
+        console.error('Initial data load failed:', err);
+      } finally {
+        setIsLoadingChart(false);
+      }
     };
     loadAll();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currency, activeModel]); // Re-load when currency or model changes
 
   // Handle model change
   const handleModelChange = useCallback(
     async (model) => {
       setActiveModel(model);
-      await loadPredictions(model, predictionDays);
+      await loadPredictions(model, predictionDays, currency);
     },
-    [loadPredictions, predictionDays]
+    [loadPredictions, predictionDays, currency]
   );
 
   // Handle historical days change
@@ -97,19 +113,19 @@ export default function App() {
     async (days) => {
       setHistoricalDays(days);
       setIsLoadingChart(true);
-      await loadHistorical(days);
+      await loadHistorical(days, currency);
       setIsLoadingChart(false);
     },
-    [loadHistorical]
+    [loadHistorical, currency]
   );
 
   // Handle prediction days change
   const handlePredictionDaysChange = useCallback(
     async (days) => {
       setPredictionDays(days);
-      await loadPredictions(activeModel, days);
+      await loadPredictions(activeModel, days, currency);
     },
-    [loadPredictions, activeModel]
+    [loadPredictions, activeModel, currency]
   );
 
   // Handle retrain
@@ -119,10 +135,11 @@ export default function App() {
         setIsRetraining(true);
         setError(null);
         const result = await retrainModel(model);
-        showToast(`${model} model retrained! New RMSE: $${result.rmse.toFixed(2)}`);
+        const currPrefix = currency === 'usd' ? '$' : '₹';
+        showToast(`${model} model retrained! New RMSE: ${currPrefix}${result.rmse.toFixed(2)}`);
 
         // Refresh predictions with new model
-        await loadPredictions(model, predictionDays);
+        await loadPredictions(model, predictionDays, currency);
       } catch (err) {
         console.error('Retrain failed:', err);
         showToast('Retrain failed. Check the ML service.', 'error');
@@ -138,14 +155,21 @@ export default function App() {
       {/* Header */}
       <header className="header">
         <div className="header__logo">
-          <span className="header__icon">🪙</span>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C19A5B" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="header__icon-svg">
+            <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon>
+            <line x1="12" y1="22" x2="12" y2="15.5"></line>
+            <polyline points="22 8.5 12 15.5 2 8.5"></polyline>
+            <polyline points="2 15.5 12 8.5 22 15.5"></polyline>
+            <line x1="12" y1="2" x2="12" y2="8.5"></line>
+          </svg>
           <div>
             <h1 className="header__title">CoinSight</h1>
-            <p className="header__subtitle">Bitcoin Price Prediction Engine</p>
+            <p className="header__subtitle">Asset Prediction Engine</p>
           </div>
         </div>
         <div className="header__actions">
-          <LiveTicker />
+          <CurrencySelector currency={currency} setCurrency={setCurrency} />
+          <LiveTicker currency={currency} />
         </div>
       </header>
 
@@ -198,53 +222,50 @@ export default function App() {
         </div>
       </div>
 
-      {/* Metrics */}
-      {predictionMeta && (
-        <div className="metrics">
-          <div className="metric-card">
-            <span className="metric-card__label">Active Model</span>
-            <span className="metric-card__value">
-              {predictionMeta.model === 'xgboost' ? '⚡ XGBoost' : '🔮 Prophet'}
-            </span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-card__label">RMSE (Test Set)</span>
-            <span className="metric-card__value metric-card__value--accent">
-              ${predictionMeta.rmse.toFixed(2)}
-            </span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-card__label">Last Trained</span>
-            <span className="metric-card__value">
-              {new Date(predictionMeta.trainedAt).toLocaleString()}
-            </span>
-          </div>
-          <div className="metric-card">
-            <span className="metric-card__label">Cache Status</span>
-            <span className="metric-card__value">
-              {predictionMeta.cached ? '📦 Cached' : '🔄 Fresh'}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Tabs Control */}
+      <div className="tabs-container">
+        <button 
+          className={`tab-btn ${activeTab === 'chart' ? 'active' : ''}`}
+          onClick={() => setActiveTab('chart')}
+        >
+          Market Overview
+        </button>
+        <button 
+          className={`tab-btn ${activeTab === 'metrics' ? 'active' : ''}`}
+          onClick={() => setActiveTab('metrics')}
+        >
+          Model Metrics
+        </button>
+      </div>
 
-      {/* Chart */}
+      {/* Tab Content */}
       <div className="glass-card">
-        <div className="glass-card__header">
-          <span className="glass-card__title">
-            Price Chart — Historical + Predictions
-          </span>
-          {isLoadingPredictions && (
-            <span className="status-badge status-badge--connected">
-              Loading predictions...
-            </span>
-          )}
-        </div>
-        <PriceChart
-          historicalData={historicalData}
-          predictions={predictions}
-          isLoading={isLoadingChart}
-        />
+        {activeTab === 'chart' ? (
+          <>
+            <div className="glass-card__header">
+              <span className="glass-card__title">
+                Price Chart — Historical + Predictions
+              </span>
+              {isLoadingPredictions && (
+                <span className="status-badge status-badge--connected">
+                  Computing predictions...
+                </span>
+              )}
+            </div>
+            <PriceChart
+              historicalData={historicalData}
+              predictions={predictions}
+              isLoading={isLoadingChart}
+              currency={currency}
+            />
+          </>
+        ) : (
+          <ModelMetricsTab 
+            predictionMeta={predictionMeta} 
+            currency={currency}
+            isLoading={isLoadingPredictions} 
+          />
+        )}
       </div>
 
       {/* Footer */}

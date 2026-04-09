@@ -47,7 +47,16 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 		return
 	}
 
-	candles, err := h.CoinGecko.GetOHLC(days)
+	currency := c.DefaultQuery("currency", "usd")
+	if currency != "usd" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_parameter",
+			Message: "currency must be 'usd'",
+		})
+		return
+	}
+
+	candles, err := h.CoinGecko.GetOHLC(days, currency)
 	if err != nil {
 		log.Printf("[Handler] CoinGecko OHLC error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
@@ -70,10 +79,19 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 // GET /api/predict?model=xgboost&days=30
 func (h *Handler) GetPredictions(c *gin.Context) {
 	model := c.DefaultQuery("model", "xgboost")
-	if model != "xgboost" && model != "prophet" {
+	if model != "xgboost" && model != "lstm_xgboost" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "invalid_parameter",
-			Message: "model must be 'xgboost' or 'prophet'",
+			Message: "model must be 'xgboost' or 'lstm_xgboost'",
+		})
+		return
+	}
+
+	currency := c.DefaultQuery("currency", "usd")
+	if currency != "usd" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_parameter",
+			Message: "currency must be 'usd'",
 		})
 		return
 	}
@@ -90,7 +108,7 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 
 	// Check Redis cache first
 	if h.Cache != nil {
-		cached, err := h.Cache.GetPrediction(c.Request.Context(), model, days)
+		cached, err := h.Cache.GetPrediction(c.Request.Context(), model, days, currency)
 		if err != nil {
 			log.Printf("[Handler] Cache read error (non-fatal): %v", err)
 		}
@@ -113,7 +131,7 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 
 	// Store in cache
 	if h.Cache != nil {
-		if err := h.Cache.SetPrediction(c.Request.Context(), model, days, prediction); err != nil {
+		if err := h.Cache.SetPrediction(c.Request.Context(), model, days, currency, prediction); err != nil {
 			log.Printf("[Handler] Cache write error (non-fatal): %v", err)
 		}
 	}
@@ -128,10 +146,10 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 // POST /api/retrain?model=xgboost
 func (h *Handler) PostRetrain(c *gin.Context) {
 	model := c.DefaultQuery("model", "xgboost")
-	if model != "xgboost" && model != "prophet" {
+	if model != "xgboost" && model != "lstm_xgboost" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "invalid_parameter",
-			Message: "model must be 'xgboost' or 'prophet'",
+			Message: "model must be 'xgboost' or 'lstm_xgboost'",
 		})
 		return
 	}

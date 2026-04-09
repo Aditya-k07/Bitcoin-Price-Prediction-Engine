@@ -1,10 +1,9 @@
 /**
- * PriceChart — Combined view with candlestick, prediction line, and confidence bands.
+ * PriceChart — Combined view with candlestick for both historical and predicted prices.
  *
  * Uses ApexCharts with multiple series:
  * 1. Candlestick series for historical OHLC data
- * 2. Line series for predicted prices (dashed cyan)
- * 3. RangeArea series for 95% confidence interval bands
+ * 2. Candlestick series for predicted OHLC data (dashed, different color)
  *
  * The chart seamlessly stitches historical data to prediction data
  * on a shared time axis.
@@ -15,73 +14,64 @@ import Chart from 'react-apexcharts';
 
 export default function PriceChart({ historicalData, predictions, isLoading }) {
   // Transform data for ApexCharts
-  const { candlestickData, predictionLine, confidenceBands } = useMemo(() => {
-    // Candlestick data: [{x: timestamp, y: [O, H, L, C]}]
-    const candles = (historicalData || []).map((d) => ({
-      x: new Date(d.timestamp),
-      y: [
-        parseFloat(d.open.toFixed(2)),
-        parseFloat(d.high.toFixed(2)),
-        parseFloat(d.low.toFixed(2)),
-        parseFloat(d.close.toFixed(2)),
-      ],
-    }));
+  const { historicalCandles, predictionCandles } = useMemo(() => {
+    // Historical candlestick data: [{x: timestamp, y: [O, H, L, C]}]
+    const historicalCandles = (historicalData || []).map((d) => {
+      const x = d.timestamp instanceof Date ? d.timestamp : new Date(d.timestamp);
+      const y = [
+        parseFloat(d.open) || 0,
+        parseFloat(d.high) || 0,
+        parseFloat(d.low) || 0,
+        parseFloat(d.close) || 0,
+      ];
+      return { x, y };
+    });
 
-    // Prediction line: [{x: date, y: price}]
-    const predLine = (predictions || []).map((p) => ({
-      x: new Date(p.date).getTime(),
-      y: parseFloat(p.price.toFixed(2)),
-    }));
+    // Prediction candlestick data: [{x: date, y: [O, H, L, C]}]
+    // Date format from ML service: "2026-04-06"
+    const predictionCandles = (predictions || []).map((p) => {
+      const x = new Date(p.date); // Parse "2026-04-06" as ISO date
+      const y = [
+        parseFloat(p.open) || 0,
+        parseFloat(p.high) || 0,
+        parseFloat(p.low) || 0,
+        parseFloat(p.close) || 0,
+      ];
+      return { x, y };
+    });
 
-    // Add a connecting point from the last candle to smooth the transition
-    if (candles.length > 0 && predLine.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      predLine.unshift({
-        x: lastCandle.x,
-        y: lastCandle.y[3], // Close price
-      });
-    }
-
-    // Confidence bands: [{x: date, y: [lower, upper]}]
-    const bands = (predictions || []).map((p) => ({
-      x: new Date(p.date).getTime(),
-      y: [parseFloat(p.lower.toFixed(2)), parseFloat(p.upper.toFixed(2))],
-    }));
-
-    // Connect bands to last candle too
-    if (candles.length > 0 && bands.length > 0) {
-      const lastCandle = candles[candles.length - 1];
-      const closePrice = lastCandle.y[3];
-      bands.unshift({
-        x: lastCandle.x,
-        y: [closePrice, closePrice],
-      });
+    if (historicalCandles.length > 0 && predictionCandles.length > 0) {
+      console.log('[Chart] Historical:', historicalCandles.length, 'Predicted:', predictionCandles.length);
+      console.log('[Chart] Sample historical:', historicalCandles[0]);
+      console.log('[Chart] Sample prediction:', predictionCandles[0]);
     }
 
     return {
-      candlestickData: candles,
-      predictionLine: predLine,
-      confidenceBands: bands,
+      historicalCandles,
+      predictionCandles,
     };
   }, [historicalData, predictions]);
 
   const series = [
     {
-      name: 'BTC/USD',
+      name: 'BTC/USD (Historical)',
       type: 'candlestick',
-      data: candlestickData,
+      data: historicalCandles,
     },
     {
-      name: 'Predicted Price',
+      name: 'BTC/USD (Predicted)',
       type: 'line',
-      data: predictionLine,
-    },
-    {
-      name: 'Confidence Interval',
-      type: 'rangeArea',
-      data: confidenceBands,
+      data: predictionCandles.map(p => ({
+        x: p.x,
+        y: p.y[3], // close price
+      })),
     },
   ];
+
+  console.log('[PriceChart] Data:', {
+    historical: historicalCandles.length,
+    predicted: predictionCandles.length,
+  });
 
   const options = {
     chart: {
@@ -162,7 +152,7 @@ export default function PriceChart({ historicalData, predictions, isLoading }) {
     plotOptions: {
       candlestick: {
         colors: {
-          upward: '#22c55e',
+          upward: '#10b981',
           downward: '#ef4444',
         },
         wick: {
@@ -171,14 +161,23 @@ export default function PriceChart({ historicalData, predictions, isLoading }) {
       },
     },
     stroke: {
-      width: [1, 2.5, 0],
+      width: [1, 2.5],
+      dashArray: [0, 0],
       curve: 'smooth',
-      dashArray: [0, 6, 0],
+      lineCap: 'round',
+      lineJoin: 'round',
     },
-    colors: ['#64748b', '#06b6d4', 'rgba(6, 182, 212, 0.15)'],
+    // Colors for candlestick and line series - cyan for predictions
+    colors: ['#10b981', '#00d4ff'],
+    markers: {
+      size: [0, 5],
+      shape: ['square', 'circle'],
+      hover: {
+        size: [0, 7],
+      },
+    },
     fill: {
-      type: ['solid', 'solid', 'solid'],
-      opacity: [1, 1, 0.3],
+      opacity: [1, 0],
     },
     legend: {
       show: true,
@@ -205,7 +204,7 @@ export default function PriceChart({ historicalData, predictions, isLoading }) {
     ],
   };
 
-  if (isLoading && candlestickData.length === 0) {
+  if (isLoading && historicalCandles.length === 0) {
     return (
       <div className="loading-overlay">
         <div className="loading-overlay__spinner" />
@@ -221,6 +220,7 @@ export default function PriceChart({ historicalData, predictions, isLoading }) {
         series={series}
         type="candlestick"
         height={500}
+        width="100%"
       />
     </div>
   );

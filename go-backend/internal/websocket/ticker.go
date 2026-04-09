@@ -31,7 +31,7 @@ type Hub struct {
 	cgClient   *coingecko.Client
 	interval   time.Duration
 	stopCh     chan struct{}
-	lastTicker *models.TickerMessage
+	lastTicker map[string]*models.TickerMessage
 }
 
 // NewHub creates a new WebSocket hub.

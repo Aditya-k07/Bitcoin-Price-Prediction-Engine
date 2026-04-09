@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef } from 'react';
 import wsService from '../services/websocket';
 
-export default function LiveTicker() {
+export default function LiveTicker({ currency = 'usd' }) {
   const [price, setPrice] = useState(null);
   const [change24h, setChange24h] = useState(null);
   const [status, setStatus] = useState('disconnected');
@@ -20,15 +20,19 @@ export default function LiveTicker() {
 
     // Subscribe to price updates
     const unsubMsg = wsService.onMessage((data) => {
+      // data is now { "usd": {...}, "inr": {...} }
+      const currData = data[currency];
+      if (!currData) return;
+
       // Determine flash direction
       if (prevPrice.current !== null) {
-        if (data.price > prevPrice.current) setFlash('up');
-        else if (data.price < prevPrice.current) setFlash('down');
+        if (currData.price > prevPrice.current) setFlash('up');
+        else if (currData.price < prevPrice.current) setFlash('down');
       }
-      prevPrice.current = data.price;
+      prevPrice.current = currData.price;
 
-      setPrice(data.price);
-      setChange24h(data.change_24h);
+      setPrice(currData.price);
+      setChange24h(currData.change_24h);
 
       // Clear flash after animation
       setTimeout(() => setFlash(''), 600);
@@ -45,9 +49,9 @@ export default function LiveTicker() {
 
   const formatPrice = (p) => {
     if (p == null) return '—';
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(currency === 'inr' ? 'en-IN' : 'en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: currency.toUpperCase(),
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(p);
@@ -62,7 +66,7 @@ export default function LiveTicker() {
   return (
     <div className="ticker">
       <div className="ticker__dot" />
-      <span className="ticker__label">BTC/USD</span>
+      <span className="ticker__label">BTC/{currency.toUpperCase()}</span>
       <span className={`ticker__price ${flash ? `ticker__price--${flash}` : ''}`}>
         {formatPrice(price)}
       </span>
@@ -75,13 +79,6 @@ export default function LiveTicker() {
           {formatChange(change24h)}
         </span>
       )}
-      <span
-        className={`status-badge ${
-          status === 'connected' ? 'status-badge--connected' : 'status-badge--disconnected'
-        }`}
-      >
-        {status === 'connected' ? '● Live' : '○ Offline'}
-      </span>
     </div>
   );
 }

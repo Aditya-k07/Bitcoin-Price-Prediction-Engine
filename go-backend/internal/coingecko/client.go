@@ -37,10 +37,13 @@ func NewClient(baseURL string, timeoutSec int) *Client {
 //   - 1-2 days: 30-minute candles
 //   - 3-30 days: 4-hour candles
 //   - 31+ days: daily candles
-func (c *Client) GetOHLC(days int) ([]models.CandleData, error) {
-	url := fmt.Sprintf("%s/coins/bitcoin/ohlc?vs_currency=usd&days=%d", c.baseURL, days)
+func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error) {
+	if currency == "" {
+		currency = "usd"
+	}
+	url := fmt.Sprintf("%s/coins/bitcoin/ohlc?vs_currency=%s&days=%d", c.baseURL, currency, days)
 
-	log.Printf("[CoinGecko] Fetching OHLC data for %d days...", days)
+	log.Printf("[CoinGecko] Fetching OHLC data for %d days in %s...", days, currency)
 
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
@@ -82,15 +85,17 @@ type SimplePrice struct {
 	Bitcoin struct {
 		USD            float64 `json:"usd"`
 		USDChange24h   float64 `json:"usd_24h_change"`
+		INR            float64 `json:"inr"`
+		INRChange24h   float64 `json:"inr_24h_change"`
 		LastUpdatedAt  int64   `json:"last_updated_at"`
 	} `json:"bitcoin"`
 }
 
-// GetSimplePrice fetches the current BTC/USD price with 24h change.
+// GetSimplePrice fetches the current BTC price in USD and INR with 24h change.
 // Used by the WebSocket ticker for live price updates.
-func (c *Client) GetSimplePrice() (*models.TickerMessage, error) {
+func (c *Client) GetSimplePrice() (map[string]*models.TickerMessage, error) {
 	url := fmt.Sprintf(
-		"%s/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true",
+		"%s/simple/price?ids=bitcoin&vs_currencies=usd,inr&include_24hr_change=true&include_last_updated_at=true",
 		c.baseURL,
 	)
 
@@ -110,10 +115,20 @@ func (c *Client) GetSimplePrice() (*models.TickerMessage, error) {
 		return nil, fmt.Errorf("failed to parse simple price response: %w", err)
 	}
 
-	return &models.TickerMessage{
-		Price:     priceData.Bitcoin.USD,
-		Currency:  "usd",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Change24h: priceData.Bitcoin.USDChange24h,
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	return map[string]*models.TickerMessage{
+		"usd": {
+			Price:     priceData.Bitcoin.USD,
+			Currency:  "usd",
+			Timestamp: timestamp,
+			Change24h: priceData.Bitcoin.USDChange24h,
+		},
+		"inr": {
+			Price:     priceData.Bitcoin.INR,
+			Currency:  "inr",
+			Timestamp: timestamp,
+			Change24h: priceData.Bitcoin.INRChange24h,
+		},
 	}, nil
 }

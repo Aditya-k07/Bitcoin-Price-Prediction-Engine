@@ -41,15 +41,18 @@ func (rc *RedisCache) Ping(ctx context.Context) error {
 }
 
 // predictionKey builds the Redis key for a cached prediction.
-// Format: "prediction:{model}:{days}"
-func predictionKey(model string, days int) string {
-	return fmt.Sprintf("prediction:%s:%d", model, days)
+// Format: "prediction:{model}:{days}:{currency}"
+func predictionKey(model string, days int, currency string) string {
+	if currency == "" {
+		currency = "usd"
+	}
+	return fmt.Sprintf("prediction:%s:%d:%s", model, days, currency)
 }
 
 // GetPrediction retrieves a cached prediction response.
 // Returns nil if the cache is empty or expired.
-func (rc *RedisCache) GetPrediction(ctx context.Context, model string, days int) (*models.PredictionResponse, error) {
-	key := predictionKey(model, days)
+func (rc *RedisCache) GetPrediction(ctx context.Context, model string, days int, currency string) (*models.PredictionResponse, error) {
+	key := predictionKey(model, days, currency)
 
 	data, err := rc.client.Get(ctx, key).Bytes()
 	if err == redis.Nil {
@@ -70,8 +73,8 @@ func (rc *RedisCache) GetPrediction(ctx context.Context, model string, days int)
 }
 
 // SetPrediction stores a prediction response in the cache.
-func (rc *RedisCache) SetPrediction(ctx context.Context, model string, days int, prediction *models.PredictionResponse) error {
-	key := predictionKey(model, days)
+func (rc *RedisCache) SetPrediction(ctx context.Context, model string, days int, currency string, prediction *models.PredictionResponse) error {
+	key := predictionKey(model, days, currency)
 
 	data, err := json.Marshal(prediction)
 	if err != nil {

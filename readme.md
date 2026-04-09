@@ -3,7 +3,7 @@
 A full-stack analytical tool that bridges raw financial data and actionable machine learning insights. CoinSight visualizes where Bitcoin has been and uses historical patterns to forecast where it might go.
 
 ![Architecture: Go + Python + React](https://img.shields.io/badge/Architecture-Microservices-blue)
-![ML: XGBoost + Prophet](https://img.shields.io/badge/ML-XGBoost%20%2B%20Prophet-green)
+![ML: XGBoost + LSTM+XGBoost](https://img.shields.io/badge/ML-XGBoost%20%2B%20LSTM-green)
 ![Frontend: React + ApexCharts](https://img.shields.io/badge/Frontend-React%20%2B%20ApexCharts-purple)
 
 ---
@@ -13,11 +13,11 @@ A full-stack analytical tool that bridges raw financial data and actionable mach
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
 3. [Tech Stack](#tech-stack)
-4. [Project Structure](#project-structure)
-5. [Phase-by-Phase Breakdown](#phase-by-phase-breakdown)
-6. [API Contracts](#api-contracts)
-7. [Getting Started](#getting-started)
-8. [Bonus Features](#bonus-features)
+4. [Key Features](#key-features)
+5. [Project Structure](#project-structure)
+6. [Phase-by-Phase Breakdown](#phase-by-phase-breakdown)
+7. [API Contracts](#api-contracts)
+8. [Getting Started](#getting-started)
 9. [Evaluation Criteria](#evaluation-criteria)
 
 ---
@@ -28,11 +28,13 @@ CoinSight uses a **microservices-lite** architecture with three core services:
 
 | Service | Language | Role |
 |---------|----------|------|
-| **ML Service** | Python (FastAPI) | The Brain — trains models, generates predictions with confidence intervals |
+| **ML Service** | Python (FastAPI) | The Brain — trains models, generates predictions with comprehensive metrics |
 | **Go Backend** | Go (Gin) | The Orchestrator — serves historical data, proxies ML requests, manages caching |
-| **Frontend** | React (Vite) | The Interface — candlestick charts, prediction overlays, live ticker |
+| **Frontend** | React (Vite) | The Interface — dual candlestick charts (historical + predicted), metrics dashboard, live ticker |
 
 **Dataset**: [Bitcoin Historical Data (Kaggle)](https://www.kaggle.com/datasets/mczielinski/bitcoin-historical-data/data) — minute-level BTC price data resampled to daily OHLCV.
+
+**Currency**: USD only for consistency and clarity.
 
 ---
 
@@ -41,20 +43,24 @@ CoinSight uses a **microservices-lite** architecture with three core services:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        React Frontend                            │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐    │
-│  │ Candlestick  │  │  Prediction  │  │  Confidence Bands    │    │
-│  │   Chart      │  │   Overlay    │  │  (Range Area Chart)  │    │
-│  └─────────────┘  └──────────────┘  └──────────────────────┘    │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐    │
-│  │ Live Ticker  │  │   Retrain    │  │  Model Selector      │    │
-│  │ (WebSocket)  │  │   Button     │  │  (XGBoost/Prophet)   │    │
-│  └─────────────┘  └──────────────┘  └──────────────────────┘    │
+│  ┌──────────────────────┐  ┌─────────────────────────────────┐   │
+│  │ Dual Candlestick View│  │  Model Metrics Dashboard        │   │
+│  │ • Historical Candles │  │  • RMSE (primary metric)        │   │
+│  │ • Predicted Candles  │  │  • MAE, R² Score, MAPE         │   │
+│  │ • Seamless Stitching │  │  • F1 Score, Accuracy          │   │
+│  │                      │  │  • Directional Accuracy        │   │
+│  └──────────────────────┘  └─────────────────────────────────┘   │
+│  ┌──────────────────────┐  ┌─────────────────────────────────┐   │
+│  │  Live Ticker (USD)   │  │  Model & Retrain Controls       │   │
+│  │  WebSocket Updates   │  │  • XGBoost / LSTM+XGBoost       │   │
+│  │  Real-time Prices    │  │  • Retrain Button               │   │
+│  └──────────────────────┘  └─────────────────────────────────┘   │
 └──────────────────────────┬───────────────────────────────────────┘
                            │ HTTP + WebSocket
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                       Go Backend (Gin)                           │
-│                                                                  │
+│                     USD-only API Endpoints                       │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐     │
 │  │  CoinGecko   │  │  ML Service  │  │  WebSocket Hub     │     │
 │  │  API Client  │  │  HTTP Client │  │  (Live Ticker)     │     │
@@ -70,19 +76,59 @@ CoinSight uses a **microservices-lite** architecture with three core services:
 ┌──────────────┐   ┌──────────────────────────────────────────────┐
 │  CoinGecko   │   │           ML Service (FastAPI)               │
 │  Public API  │   │                                              │
-│              │   │  ┌────────────┐  ┌────────────────────┐      │
-└──────────────┘   │  │  XGBoost   │  │     Prophet        │      │
-                   │  │  (Aggr.)   │  │     (Conserv.)     │      │
-                   │  └────────────┘  └────────────────────┘      │
+│              │   │  ┌─────────────────┐  ┌─────────────────┐    │
+└──────────────┘   │  │  XGBoost        │  │  LSTM+XGBoost   │    │
+                   │  │  Quantile Reg.  │  │  Hybrid Network │    │
+                   │  └─────────────────┘  └─────────────────┘    │
                    │                                              │
-                   │  ┌────────────────────────────────────┐      │
-                   │  │  Feature Engineering Pipeline      │      │
-                   │  │  Lag Values · Rolling Avg · RSI    │      │
-                   │  └────────────────────────────────────┘      │
+                   │  ┌────────────────────────────────────────┐  │
+                   │  │  Evaluation Metrics Pipeline           │  │
+                   │  │  • RMSE, MAE, R² Score                │  │
+                   │  │  • MAPE, F1 Score, Accuracy           │  │
+                   │  │  • Directional Accuracy               │  │
+                   │  └────────────────────────────────────────┘  │
+                   │                                              │
+                   │  ┌────────────────────────────────────────┐  │
+                   │  │  Feature Engineering Pipeline          │  │
+                   │  │  • Lag Values (1, 3, 7, 14, 30 days)  │  │
+                   │  │  • SMA (7, 14, 30 days)               │  │
+                   │  │  • RSI (14-day momentum)              │  │
+                   │  │  • Volatility & Daily Returns         │  │
+                   │  └────────────────────────────────────────┘  │
                    │                                              │
                    │  Dataset: Kaggle BTC Historical (CSV)        │
+                   │  OHLC Output Format for Predictions         │
                    └──────────────────────────────────────────────┘
 ```
+
+---
+
+## Key Features
+
+### Visualization
+- **Dual Candlestick Charts**: Historical and predicted BTC prices side-by-side
+- **Seamless Stitching**: Predictions seamlessly connect from last historical candle
+- **OHLC Format**: Both historical and predicted prices display as proper candlesticks
+
+### Model Comparison
+- **XGBoost Regressor**: Aggressive, fast predictions using quantile regression
+- **Hybrid LSTM+XGBoost**: Deep learning + ensemble for refined accuracy
+
+### Comprehensive Metrics Dashboard
+| Metric | Purpose | Type |
+|--------|---------|------|
+| **RMSE** | Root Mean Squared Error (primary metric) | Error (USD) |
+| **MAE** | Mean Absolute Error | Error (USD) |
+| **R² Score** | Coefficient of Determination (0-1) | Fit Quality |
+| **MAPE** | Mean Absolute Percentage Error | % Error |
+| **F1 Score** | Directional precision on trend predictions | % |
+| **Accuracy** | Predictions within 2% threshold | % |
+| **Directional Accuracy** | Trend direction match rate | % |
+
+### Live Updates
+- **WebSocket Ticker**: Real-time USD/BTC prices from CoinGecko
+- **Auto-Retrain**: Manual retrain button to update model with latest data
+- **Redis Caching**: 5-minute prediction caching for performance
 
 ---
 
@@ -90,11 +136,12 @@ CoinSight uses a **microservices-lite** architecture with three core services:
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **ML Service** | Python 3.11, FastAPI, XGBoost, Prophet, pandas, scikit-learn | Industry standard for data science; FastAPI for async endpoints |
+| **ML Service** | Python 3.11, FastAPI, XGBoost, PyTorch (LSTM), scikit-learn, pandas | Industry standard for data science; FastAPI for async; PyTorch for LSTM hybrid |
 | **Backend** | Go 1.22, Gin, go-redis, gorilla/websocket | Superior concurrency, fast API routing, built-in timeout handling |
-| **Frontend** | React 18, Vite, ApexCharts, Axios | High-perf data viz, modern tooling, smooth candlestick rendering |
+| **Frontend** | React 18, Vite, ApexCharts, Axios | High-perf data viz, candlestick + line support, modern tooling |
 | **Cache** | Redis 7 | In-memory store for 5-min prediction caching |
 | **Orchestration** | Docker Compose | One-command spin-up of all services |
+| **Metrics** | scikit-learn | RMSE, MAE, R², MAPE, F1, Accuracy, Directional Accuracy |
 
 ---
 
@@ -115,8 +162,8 @@ backend_task_golang/
 │   │   ├── features.py         # Lag values, rolling avg, RSI
 │   │   ├── schemas.py          # Pydantic request/response models
 │   │   └── models/
-│   │       ├── xgboost_model.py  # XGBoost train/predict/evaluate
-│   │       └── prophet_model.py  # Prophet train/predict
+│   │       ├── xgboost_model.py  # XGBoost + metrics computation
+│   │       └── lstm_xgboost_model.py  # Hybrid LSTM+XGBoost
 │   └── data/
 │       └── btc_historical.csv  # Kaggle dataset (not committed)
 │
@@ -127,7 +174,7 @@ backend_task_golang/
 │   ├── internal/
 │   │   ├── api/
 │   │   │   ├── router.go       # Route definitions
-│   │   │   └── handlers.go     # HTTP handlers
+│   │   │   └── handlers.go     # HTTP handlers (USD-only)
 │   │   ├── coingecko/
 │   │   │   └── client.go       # CoinGecko OHLC client
 │   │   ├── mlclient/
@@ -135,9 +182,9 @@ backend_task_golang/
 │   │   ├── cache/
 │   │   │   └── redis.go        # Redis get/set (5-min TTL)
 │   │   ├── websocket/
-│   │   │   └── ticker.go       # WebSocket hub for live prices
+│   │   │   └── ticker.go       # WebSocket hub for live prices (USD)
 │   │   └── models/
-│   │       └── types.go        # Shared data types
+│   │       └── types.go        # Shared data types (metrics support)
 │   └── config/
 │       └── config.go           # Env-based configuration
 │
@@ -150,15 +197,15 @@ backend_task_golang/
         ├── main.jsx
         ├── index.css
         ├── components/
-        │   ├── CandlestickChart.jsx   # Historical OHLC candles
-        │   ├── PredictionOverlay.jsx   # Predicted price line
-        │   ├── ConfidenceBands.jsx     # 95% CI range-area
-        │   ├── LiveTicker.jsx          # WebSocket price ticker
-        │   ├── RetrainButton.jsx       # Trigger retrain flow
-        │   └── ModelSelector.jsx       # XGBoost vs Prophet toggle
+        │   ├── PriceChart.jsx              # Dual candlestick view
+        │   ├── LiveTicker.jsx              # WebSocket ticker (USD)
+        │   ├── ModelMetricsTab.jsx         # Metrics dashboard
+        │   ├── ModelSelector.jsx           # Model selection
+        │   ├── RetrainButton.jsx           # Retrain trigger
+        │   └── CurrencySelector.jsx        # USD-only selector
         └── services/
-            ├── api.js                  # Axios REST client
-            └── websocket.js            # WS connection manager
+            ├── api.js                      # Axios REST client
+            └── websocket.js                # WS connection manager
 ```
 
 ---
@@ -169,7 +216,7 @@ We build this project incrementally. Each phase is self-contained and testable.
 
 ### Phase 1: ML Service (Python) — *The Brain*
 
-**Goal**: A standalone Python service that ingests historical BTC data, engineers features, trains models, and serves predictions via REST.
+**Goal**: A standalone Python service that ingests historical BTC data, engineers features, trains models, and serves predictions with comprehensive metrics via REST.
 
 #### Requirements
 | # | Requirement | Details |
@@ -177,15 +224,18 @@ We build this project incrementally. Each phase is self-contained and testable.
 | 1.1 | **Data Ingestion** | Load Kaggle CSV (~7M rows, minute-level). Resample to daily OHLCV (Open, High, Low, Close, Volume). Handle missing values. |
 | 1.2 | **Feature Engineering** | **Lag Values**: Close price at t-1, t-3, t-7, t-14, t-30 days. **Rolling Averages**: 7-day, 14-day, 30-day SMA. **Extras**: RSI (14-day), daily return %, rolling volatility (14-day std dev). |
 | 1.3 | **XGBoost Model** | Train/test split (80/20, time-based, no shuffle). Target = next-day close. **Confidence Intervals** via quantile regression (train 3 models: α=0.025, 0.5, 0.975 for 95% CI). |
-| 1.4 | **Prophet Model** | Facebook Prophet with daily seasonality. Built-in uncertainty intervals (95%). Renamed columns to `ds` (date) and `y` (close). |
-| 1.5 | **Evaluation** | Report RMSE on test set for both models. Log during training. |
-| 1.6 | **API Endpoints** | `GET /predict`, `POST /retrain`, `GET /health` (see API Contracts below). |
-| 1.7 | **Dockerization** | `python:3.11-slim`, install deps, expose port 8000. |
+| 1.4 | **LSTM+XGBoost Hybrid** | PyTorch LSTM (2 layers, 64 units) stacked with XGBoost Regressor. LSTM extracts temporal patterns, fed into XGBoost for quantile mapping. |
+| 1.5 | **Evaluation Metrics** | Compute RMSE, MAE, R² Score, MAPE, F1 Score (directional), Accuracy (2% threshold), Directional Accuracy on test set. Report all during training. |
+| 1.6 | **OHLC Prediction Format** | Return predictions as OHLC candles: open=price, high=upper_bound, low=lower_bound, close=price. Enables candlestick visualization. |
+| 1.7 | **API Endpoints** | `GET /predict` (with metrics), `POST /retrain` (with metrics), `GET /health` (see API Contracts below). |
+| 1.8 | **Dockerization** | `python:3.11-slim`, install deps, expose port 8000. |
 
 #### Key Concepts
 - **Lag Values**: "What was the price N days ago?" — lets the model learn from recent history.
 - **Rolling Averages**: Smooth out daily volatility to reveal trends.
-- **Confidence Intervals**: "We predict $65,000 ± $3,000 (95% CI)" — communicates uncertainty honestly.
+- **Confidence Intervals**: "We predict $65,000 (±$3,000 95% CI)" — communicates uncertainty honestly.
+- **Comprehensive Metrics**: RMSE (error magnitude), MAE (robustness), R² (fit quality), MAPE (% error), F1/Accuracy (directional prediction), Directional Accuracy (trend matching).
+- **Hybrid Model**: LSTM captures long-term dependencies, XGBoost provides quantile-based uncertainty bounds.
 
 ---
 
@@ -218,14 +268,15 @@ We build this project incrementally. Each phase is self-contained and testable.
 #### Requirements
 | # | Requirement | Details |
 |---|-------------|---------|
-| 3.1 | **Candlestick Chart** | ApexCharts `candlestick` type for historical OHLC. Responsive, zoomable, dark theme. |
-| 3.2 | **Prediction Overlay** | `line` series appended after the last candle. Different color (e.g., cyan dashed) to distinguish from historical. |
-| 3.3 | **Confidence Bands** | `rangeArea` series showing upper/lower bounds as a shaded region around the prediction line. |
-| 3.4 | **Combined View** | Historical candles + prediction line + confidence bands on a single synchronized chart. Seamless time axis transition. |
-| 3.5 | **Model Selector** | Toggle/dropdown: "Conservative (Prophet)" vs "Aggressive (XGBoost)". Fetches new predictions on change. |
-| 3.6 | **Retrain Button** | Triggers `POST /api/retrain` → shows loading spinner → on success, refetches predictions and updates chart. |
-| 3.7 | **Live Ticker** | WebSocket connection to `ws://backend/ws/ticker`. Displays current BTC/USD price with green/red flash on change. |
-| 3.8 | **UI/UX Polish** | Dark theme, glassmorphism cards, smooth animations, responsive layout. |
+| 3.1 | **Dual Candlestick Chart** | Historical OHLC candles + Predicted OHLC candles on single chart. Both rendered as candlesticks (not line overlay). Seamless stitching at last historical close. |
+| 3.2 | **Candlestick Format** | Predictions returned as OHLC: open=close price, high=upper bound, low=lower bound, close=predicted price. Enables realistic candlestick rendering. |
+| 3.3 | **Combined View** | Historical + predicted candlesticks synchronized on shared time axis. Dashed lines for predicted series to distinguish from historical. |
+| 3.4 | **Metrics Dashboard** | Tab showing: RMSE (primary), MAE, R² Score, MAPE, F1 Score, Accuracy, Directional Accuracy. Updated with each prediction. |
+| 3.5 | **Model Selector** | Toggle: "XGBoost Regressor" vs "Hybrid LSTM+XGBoost". Fetches new predictions and metrics on change. |
+| 3.6 | **Retrain Button** | Triggers `POST /api/retrain` → loading spinner → updates metrics and chart on success. |
+| 3.7 | **Live Ticker** | WebSocket connection to `ws://backend/ws/ticker`. USD-only, displays current BTC price with real-time updates. |
+| 3.8 | **Currency Selector** | USD-only option (INR removed). Consistent pricing in dollars. |
+| 3.9 | **UI/UX Polish** | Dark theme, metrics cards, smooth animations, responsive layout. Legends show series names and colors. |
 
 ---
 
@@ -249,28 +300,45 @@ We build this project incrementally. Each phase is self-contained and testable.
 
 #### `GET /predict`
 ```
-Query: ?model=xgboost|prophet&days=30
+Query: ?model=xgboost&days=30
 Response:
 {
   "model": "xgboost",
   "predictions": [
-    {"date": "2024-01-15", "price": 65000.0, "lower": 62000.0, "upper": 68000.0},
+    {"date": "2024-01-15", "open": 65000.0, "high": 68000.0, "low": 62000.0, "close": 65000.0},
     ...
   ],
   "rmse": 1250.5,
-  "trained_at": "2024-01-14T12:00:00Z"
+  "mae": 850.2,
+  "r2_score": 0.9145,
+  "mape": 1.32,
+  "f1_score": 87.5,
+  "accuracy": 94.2,
+  "directional_accuracy": 82.1,
+  "trained_at": "2024-01-14T12:00:00Z",
+  "architecture_details": {
+    "base_model": "XGBoost (500 Trees)",
+    "strategy": "Quantile Regression for 95% CI"
+  }
 }
 ```
 
 #### `POST /retrain`
 ```
-Query: ?model=xgboost|prophet
+Query: ?model=xgboost
 Response:
 {
   "model": "xgboost",
   "rmse": 1180.3,
+  "mae": 812.5,
+  "r2_score": 0.9287,
+  "mape": 1.19,
+  "f1_score": 89.3,
+  "accuracy": 95.1,
+  "directional_accuracy": 84.6,
   "trained_at": "2024-01-15T14:30:00Z",
-  "message": "Model retrained successfully"
+  "message": "Model retrained successfully",
+  "architecture_details": {...}
 }
 ```
 

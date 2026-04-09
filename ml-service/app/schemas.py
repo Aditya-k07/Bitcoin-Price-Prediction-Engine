@@ -10,9 +10,10 @@ from datetime import datetime
 class PredictionPoint(BaseModel):
     """A single prediction data point with confidence bounds."""
     date: str
-    price: float
-    lower: float
-    upper: float
+    open: float
+    high: float
+    low: float
+    close: float
 
 
 class PredictionResponse(BaseModel):
@@ -20,15 +21,29 @@ class PredictionResponse(BaseModel):
     model: str
     predictions: List[PredictionPoint]
     rmse: float
+    mae: Optional[float] = None
+    r2_score: Optional[float] = None
+    mape: Optional[float] = None
+    f1_score: Optional[float] = None
+    accuracy: Optional[float] = None
+    directional_accuracy: Optional[float] = None
     trained_at: str
+    architecture_details: Optional[dict] = None
 
 
 class RetrainResponse(BaseModel):
     """Response from the /retrain endpoint."""
     model: str
     rmse: float
+    mae: Optional[float] = None
+    r2_score: Optional[float] = None
+    mape: Optional[float] = None
+    f1_score: Optional[float] = None
+    accuracy: Optional[float] = None
+    directional_accuracy: Optional[float] = None
     trained_at: str
     message: str
+    architecture_details: Optional[dict] = None
 
 
 class HealthResponse(BaseModel):
@@ -40,6 +55,13 @@ class HealthResponse(BaseModel):
 class ModelMetrics(BaseModel):
     """Internal model tracking metrics."""
     rmse: float
+    mae: Optional[float] = None
+    r2_score: Optional[float] = None
+    mape: Optional[float] = None
+    f1_score: Optional[float] = None
+    accuracy: Optional[float] = None
+    directional_accuracy: Optional[float] = None
     trained_at: datetime
     num_training_samples: int
     num_features: Optional[int] = None
+    architecture_details: Optional[dict] = None

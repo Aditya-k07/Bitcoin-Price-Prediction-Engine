@@ -40,35 +40,9 @@ services:
     networks:
       - coinsight-net
 
-  # ── Go Backend (Gin) ──
-  go-backend:
-    build:
-      context: ./go-backend
-      dockerfile: Dockerfile
-    container_name: coinsight-backend
-    ports:
-      - "8080:8080"
-    environment:
-      - PORT=8080
-      - ML_SERVICE_URL=http://ml-service:8000
-      - ML_SERVICE_TIMEOUT=120
-      - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=
-      - CACHE_TTL=300
-      - COINGECKO_BASE_URL=https://api.coingecko.com/api/v3
-      - TICKER_INTERVAL=10
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    networks:
-      - coinsight-net
-
   # ── React Frontend (Vite + Nginx) ──
+  # NOTE: Frontend fetches predictions directly from ML service at http://localhost:8000/predict
+  # Go backend has been removed as it's not needed for this architecture
   frontend:
     build:
       context: ./frontend
@@ -76,8 +50,6 @@ services:
     container_name: coinsight-frontend
     ports:
       - "3000:3000"
-    depends_on:
-      - go-backend
     networks:
       - coinsight-net
 
