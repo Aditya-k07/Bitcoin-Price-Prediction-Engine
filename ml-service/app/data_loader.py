@@ -157,3 +157,63 @@ def load_daily_data(csv_path: str = None) -> pd.DataFrame:
     raw = load_raw_data(csv_path)
     daily = resample_to_daily(raw)
     return daily
+
+
+def load_from_coingecko_ohlc(candles: list) -> pd.DataFrame:
+    """
+    Load and process fresh OHLC data from CoinGecko.
+
+    Expects a list of dicts with keys: timestamp (Unix ms), open, high, low, close.
+    Converts to daily OHLCV DataFrame compatible with feature engineering.
+
+    Args:
+        candles: List of dicts with OHLC data from CoinGecko.
+
+    Returns:
+        Daily OHLCV DataFrame ready for feature engineering.
+
+    Raises:
+        ValueError: If data is empty or malformed.
+    """
+    if not candles:
+        raise ValueError("No OHLC data provided")
+
+    try:
+        # Convert to DataFrame
+        df = pd.DataFrame(candles)
+
+        # Convert timestamp from milliseconds to seconds if needed
+        if "timestamp" in df.columns:
+            # Check if timestamp is in milliseconds (13 digits) or seconds (10 digits)
+            sample_ts = df["timestamp"].iloc[0]
+            if sample_ts > 1e11:  # milliseconds
+                df["timestamp"] = df["timestamp"] / 1000
+
+            df["Timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+            df.drop(columns=["timestamp"], inplace=True)
+        else:
+            raise ValueError("Missing 'timestamp' column in OHLC data")
+
+        # Standardize column names to match expected format
+        col_mapping = {
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close"
+        }
+        df.rename(columns=col_mapping, inplace=True)
+
+        # Set datetime index
+        df.set_index("Timestamp", inplace=True)
+
+        logger.info(f"Loaded {len(df):,} candles from CoinGecko, date range: {df.index.min().date()} to {df.index.max().date()}")
+
+        # For daily data from CoinGecko, resample to ensure consistency
+        # (in case some data points are missing)
+        daily = resample_to_daily(df)
+
+        return daily
+
+    except Exception as e:
+        logger.error(f"Failed to load CoinGecko OHLC data: {e}")
+        raise ValueError(f"Invalid OHLC data format: {e}")

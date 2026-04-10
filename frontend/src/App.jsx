@@ -17,7 +17,7 @@ import ModelSelector from './components/ModelSelector';
 import RetrainButton from './components/RetrainButton';
 import CurrencySelector from './components/CurrencySelector';
 import ModelMetricsTab from './components/ModelMetricsTab';
-import { fetchHistorical, fetchPredictions, retrainModel } from './services/api';
+import { fetchHistorical, fetchPredictions, retrainModel, downloadPredictionsExcel } from './services/api';
 
 export default function App() {
   // State
@@ -32,6 +32,7 @@ export default function App() {
   const [isLoadingChart, setIsLoadingChart] = useState(true);
   const [isLoadingPredictions, setIsLoadingPredictions] = useState(false);
   const [isRetraining, setIsRetraining] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -45,11 +46,15 @@ export default function App() {
   const loadHistorical = useCallback(async (days, curr) => {
     try {
       setError(null);
+      console.log(`[App] Loading historical data: days=${days}, currency=${curr}`);
       const data = await fetchHistorical(days, curr);
+      console.log('[App] Historical data response:', data);
+      console.log(`[App] Setting historical data: ${data.data?.length || 0} items`);
       setHistoricalData(data.data || []);
     } catch (err) {
       console.error('Failed to load historical data:', err);
-      setError('Failed to load historical data from CoinGecko. Please check your internet connection.');
+      console.error('Error details:', err.response?.data || err.message);
+      setError(`Failed to load historical data: ${err.message}`);
     }
   }, []);
 
@@ -58,7 +63,10 @@ export default function App() {
     try {
       setIsLoadingPredictions(true);
       setError(null);
+      console.log(`[App] Loading predictions: model=${model}, days=${days}`);
       const data = await fetchPredictions(model, days, curr);
+      console.log('[App] Predictions response:', data);
+      console.log(`[App] Setting predictions: ${data.predictions?.length || 0} items`);
       setPredictions(data.predictions || []);
       setPredictionMeta({
         model: data.model,
@@ -71,11 +79,12 @@ export default function App() {
         directional_accuracy: data.directional_accuracy,
         trainedAt: data.trained_at,
         architecture_details: data.architecture_details,
-        cached: data.cached,
       });
+      console.log('[App] Prediction metadata set');
     } catch (err) {
       console.error('Failed to load predictions:', err);
-      setError('Failed to load predictions. The ML service may be training or unavailable.');
+      console.error('Error details:', err.response?.data || err.message);
+      setError(`Failed to load predictions: ${err.message}`);
       setPredictions([]);
       setPredictionMeta(null);
     } finally {
@@ -150,6 +159,24 @@ export default function App() {
     [loadPredictions, predictionDays, showToast]
   );
 
+  // Handle download predictions as Excel
+  const handleDownloadExcel = useCallback(
+    async () => {
+      try {
+        setIsDownloading(true);
+        setError(null);
+        await downloadPredictionsExcel(activeModel, predictionDays);
+        showToast('Predictions downloaded successfully!', 'success');
+      } catch (err) {
+        console.error('Download failed:', err);
+        showToast('Download failed. Check the service.', 'error');
+      } finally {
+        setIsDownloading(false);
+      }
+    },
+    [activeModel, predictionDays, showToast]
+  );
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -189,6 +216,29 @@ export default function App() {
           onRetrain={handleRetrain}
           isLoading={isRetraining}
         />
+
+        <button 
+          className="download-btn"
+          onClick={handleDownloadExcel}
+          disabled={isDownloading || predictions.length === 0}
+          title={predictions.length === 0 ? 'No predictions available' : 'Download predictions as Excel'}
+        >
+          {isDownloading ? (
+            <>
+              <span className="download-btn__spinner"></span>
+              Downloading...
+            </>
+          ) : (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Export to Excel
+            </>
+          )}
+        </button>
 
         <div className="days-selector">
           <label className="days-selector__label">History:</label>

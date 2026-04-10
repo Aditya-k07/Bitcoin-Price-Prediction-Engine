@@ -1,25 +1,40 @@
-FROM python:3.11-slim
+# Build stage - compile packages
+FROM python:3.11-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies for Prophet (requires compiler)
+# Install only build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
 COPY requirements.txt .
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Install dependencies with optimized pip configuration
+# Using --no-build-isolation speeds up build, --no-cache-dir reduces warnings
+RUN pip install --user --no-cache-dir --no-build-isolation -r requirements.txt && \
+    rm -rf /tmp/pip-* && \
+    find /root/.local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# Create directories for data and saved models
-RUN mkdir -p data saved_models
+# Runtime stage - minimal
+FROM python:3.11-slim
 
-# Expose port
+WORKDIR /app
+
+# Copy pre-built Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Set PATH to use local pip packages
+ENV PATH=/root/.local/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+COPY app/ ./app/
+COPY data/ ./data/
+
+# Create directory for saved models
+RUN mkdir -p saved_models
+
 EXPOSE 8000
 
-# Run the FastAPI app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

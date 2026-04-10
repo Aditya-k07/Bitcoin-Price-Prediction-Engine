@@ -366,6 +366,44 @@ body::before {
   to { transform: rotate(360deg); }
 }
 
+/* Download Button */
+.download-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.download-btn:hover:not(:disabled) {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary-glow);
+  background: rgba(193, 154, 91, 0.05);
+}
+
+.download-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.download-btn__spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* Days Selector */
 .days-selector {
   display: flex;

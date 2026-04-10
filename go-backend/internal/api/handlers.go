@@ -73,7 +73,8 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 	})
 }
 
-// GetPredictions proxies prediction requests to the ML service.
+// GetPredictions proxies prediction requests to the ML service with fresh CoinGecko data.
+// Fetches 1 year of historical OHLC data from CoinGecko and sends it with the prediction request.
 // Results are cached in Redis for 5 minutes.
 //
 // GET /api/predict?model=xgboost&days=30
@@ -118,8 +119,22 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 		}
 	}
 
-	// Cache miss — fetch from ML service
-	prediction, err := h.MLClient.GetPredictions(model, days)
+	// Fetch 1 year of historical data from CoinGecko (365 days)
+	log.Printf("[Handler] Fetching 1 year of historical data from CoinGecko...")
+	candles, err := h.CoinGecko.GetOHLC(365, currency)
+	if err != nil {
+		log.Printf("[Handler] CoinGecko OHLC error: %v", err)
+		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
+			Error:   "upstream_error",
+			Message: "Failed to fetch historical data from CoinGecko",
+		})
+		return
+	}
+
+	log.Printf("[Handler] Got %d candles from CoinGecko, sending to ML service...", len(candles))
+
+	// Send fresh data to ML service for prediction
+	prediction, err := h.MLClient.GetPredictionsWithData(model, days, candles)
 	if err != nil {
 		log.Printf("[Handler] ML prediction error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{

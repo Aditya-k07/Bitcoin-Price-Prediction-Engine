@@ -3,17 +3,17 @@ FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-# Install git for module downloads
 RUN apk add --no-cache git
 
 # Download dependencies first (cacheable layer)
-COPY go.mod ./
-COPY go.sum* ./
+COPY go.mod go.sum* ./
 RUN go mod download
 
-# Build the binary
-COPY . .
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /coinsight-backend ./cmd/server
+# Build the binary with optimizations
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY config/ ./config/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags='-s -w' -o /coinsight-backend ./cmd/server
 
 # Runtime stage (minimal image)
 FROM alpine:3.19

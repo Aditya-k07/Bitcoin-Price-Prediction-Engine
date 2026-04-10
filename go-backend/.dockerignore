@@ -1,0 +1,13 @@
+.git
+.gitignore
+.DS_Store
+.vscode
+.idea
+node_modules
+vendor
+*.log
+.env
+README.md
+*.test
+bench
+coverage

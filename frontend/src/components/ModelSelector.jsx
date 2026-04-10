@@ -1,12 +1,12 @@
 /**
- * ModelSelector — Toggle between Conservative (Prophet) and Aggressive (XGBoost).
+ * ModelSelector — Toggle between XGBoost (Accurate) and Ridge (Fast).
  * Visually indicates active model with a glowing button style.
  */
 
 export default function ModelSelector({ activeModel, onModelChange, disabled }) {
   const models = [
-    { id: 'xgboost', label: 'XGBoost', tag: 'Aggressive' },
-    { id: 'lstm_xgboost', label: 'Hybrid LSTM', tag: 'Deep Learning' },
+    { id: 'xgboost', label: 'XGBoost', tag: 'Accurate' },
+    { id: 'ridge', label: 'Ridge', tag: 'Fast' },
   ];
 
   return (

@@ -3,6 +3,7 @@
 package mlclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -106,6 +107,56 @@ func (c *Client) GetPredictions(model string, days int) (*models.PredictionRespo
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("ML service request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.recordFailure()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ML service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var prediction models.PredictionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&prediction); err != nil {
+		c.recordFailure()
+		return nil, fmt.Errorf("failed to parse ML prediction response: %w", err)
+	}
+
+	c.recordSuccess()
+	return &prediction, nil
+}
+
+// GetPredictionsWithData sends fresh OHLC data to the ML service for predictions.
+func (c *Client) GetPredictionsWithData(model string, days int, candles []models.CandleData) (*models.PredictionResponse, error) {
+	if !c.isAvailable() {
+		return nil, fmt.Errorf("ML service unavailable (circuit breaker open)")
+	}
+
+	url := fmt.Sprintf("%s/predict_with_data", c.baseURL)
+	log.Printf("[MLClient] Fetching predictions with data: model=%s, days=%d, candles=%d", model, days, len(candles))
+
+	// Build request payload
+	requestData := map[string]interface{}{
+		"model": model,
+		"days": days,
+		"data": candles,
+	}
+
+	payload, err := json.Marshal(requestData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prediction request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.recordFailure()
+		return nil, fmt.Errorf("ML service prediction request failed: %w", err)
 	}
 	defer resp.Body.Close()
 

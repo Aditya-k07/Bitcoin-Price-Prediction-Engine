@@ -82,6 +82,45 @@ export const retrainModel = async (model = 'xgboost') => {
 };
 
 /**
+ * Download predictions as Excel file.
+ * @param {string} model - 'xgboost' or 'lstm_xgboost'
+ * @param {number} days - Prediction horizon (default 30)
+ * @returns {Promise<void>}
+ */
+export const downloadPredictionsExcel = async (model = 'xgboost', days = 30) => {
+  try {
+    const response = await axios.get(
+      `/api/ml/predict/export?model=${model}&days=${days}`,
+      { responseType: 'blob', timeout: 120000 }
+    );
+    
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `predictions_${model}_${days}days.xlsx`;
+    if (contentDisposition) {
+      const matches = contentDisposition.match(/filename="([^"]+)"/);
+      if (matches) filename = matches[1];
+    }
+    
+    // Create blob and download
+    const blob = new Blob([response.data], { 
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error downloading predictions:', error);
+    throw new Error(`Failed to download predictions: ${error.message}`);
+  }
+};
+
+/**
  * Check ML service health status via nginx proxy.
  * @returns {Promise<Object>}
  */

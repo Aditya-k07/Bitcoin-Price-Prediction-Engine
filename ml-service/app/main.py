@@ -4,6 +4,7 @@ CoinSight ML Service — FastAPI Application
 Serves Bitcoin price predictions via REST API.
 Endpoints:
   GET  /predict?model=xgboost|prophet&days=30
+  GET  /predict/export?model=xgboost|lstm_xgboost&days=30
   POST /retrain?model=xgboost|prophet
   GET  /health
 """
@@ -11,16 +12,22 @@ Endpoints:
 import logging
 import os
 import threading
+import io
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from app.data_loader import load_daily_data
+from app.data_loader import load_daily_data, load_from_coingecko_ohlc
 from app.features import engineer_features, get_feature_columns
 from app.models.xgboost_model import XGBoostPredictor
-from app.models.lstm_xgboost_model import LSTMXGBoostPredictor
-from app.schemas import PredictionResponse, RetrainResponse, HealthResponse
+from app.models.ridge_model import RidgePredictor
+from app.schemas import PredictionResponse, RetrainResponse, HealthResponse, HistoricalDataRequest
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Global model instances
 xgboost_predictor = XGBoostPredictor()
-lstm_predictor = LSTMXGBoostPredictor()
+ridge_predictor = RidgePredictor()
 
 # Global data cache
 _daily_data = None
@@ -60,14 +67,14 @@ def _get_data():
 def _try_load_models():
     """Try to load pre-trained models from disk on startup."""
     xgb_loaded = xgboost_predictor.load()
-    lstm_loaded = lstm_predictor.load()
+    ridge_loaded = ridge_predictor.load()
 
     if xgb_loaded:
         logger.info("XGBoost model loaded from saved state.")
-    if lstm_loaded:
-        logger.info("LSTM+XGBoost Hybrid model loaded from saved state.")
+    if ridge_loaded:
+        logger.info("Ridge model loaded from saved state.")
 
-    return xgb_loaded, lstm_loaded
+    return xgb_loaded, ridge_loaded
 
 
 @asynccontextmanager
@@ -110,8 +117,8 @@ async def health_check():
     models_loaded = []
     if xgboost_predictor.is_trained:
         models_loaded.append("xgboost")
-    if lstm_predictor.is_trained:
-        models_loaded.append("lstm_xgboost")
+    if ridge_predictor.is_trained:
+        models_loaded.append("ridge")
 
     return HealthResponse(
         status="healthy",
@@ -121,15 +128,15 @@ async def health_check():
 
 @app.get("/predict", response_model=PredictionResponse)
 async def predict(
-    model: str = Query("xgboost", regex="^(xgboost|lstm_xgboost)$",
-                       description="Model to use: 'xgboost' or 'lstm_xgboost'"),
+    model: str = Query("xgboost", regex="^(xgboost|ridge)$",
+                       description="Model to use: 'xgboost' (accurate) or 'ridge' (fast)"),
     days: int = Query(30, ge=1, le=365,
                       description="Number of days to predict (1-365)")
 ):
     """
     Generate price predictions with confidence intervals.
 
-    - **model**: 'xgboost' (Aggressive) or 'lstm_xgboost' (Hybrid Network)
+    - **model**: 'xgboost' (accurate, slower) or 'ridge' (fast, lightweight)
     - **days**: Number of future days to predict (default: 30, max: 365)
 
     Returns predicted prices with 95% confidence bounds.
@@ -147,10 +154,10 @@ async def predict(
         predictions = predictor.predict(featured_data, days=days)
         metrics = predictor.metrics
 
-    elif model == "lstm_xgboost":
-        predictor = lstm_predictor
+    elif model == "ridge":
+        predictor = ridge_predictor
         if not predictor.is_trained:
-            logger.info("LSTM+XGBoost not trained, training now...")
+            logger.info("Ridge not trained, training now...")
             feature_cols = get_feature_columns(featured_data)
             predictor.train(featured_data, feature_cols)
 
@@ -190,10 +197,98 @@ async def predict(
     )
 
 
+@app.post("/predict_with_data", response_model=PredictionResponse)
+async def predict_with_data(request: HistoricalDataRequest):
+    """
+    Generate predictions using fresh OHLC data from the Go backend.
+
+    This endpoint accepts OHLC candlestick data (from CoinGecko via Go backend),
+    trains/uses a model, and returns predictions with confidence intervals.
+
+    - **model**: 'xgboost' (accurate) or 'ridge' (fast)
+    - **days**: Number of future days to predict (1-365)
+    - **data**: List of OHLC candles with timestamp, open, high, low, close
+
+    Returns predicted prices with 95% confidence bounds.
+    """
+    if request.model not in ["xgboost", "ridge"]:
+        raise HTTPException(status_code=400, detail=f"Unknown model: {request.model}")
+
+    logger.info(f"[/predict_with_data] Received {len(request.data)} candles, predicting {request.days} days")
+
+    try:
+        # Convert received OHLC data to DataFrame
+        candle_dicts = [
+            {
+                "timestamp": c.timestamp,
+                "open": c.open,
+                "high": c.high,
+                "low": c.low,
+                "close": c.close
+            }
+            for c in request.data
+        ]
+        daily_data = load_from_coingecko_ohlc(candle_dicts)
+        featured_data = engineer_features(daily_data)
+
+    except Exception as e:
+        logger.error(f"Failed to process OHLC data: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to process data: {str(e)}")
+
+    if request.model == "xgboost":
+        predictor = xgboost_predictor
+        if not predictor.is_trained:
+            logger.info("XGBoost not trained, training on provided data...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+
+        predictions = predictor.predict(featured_data, days=request.days)
+        metrics = predictor.metrics
+
+    elif request.model == "ridge":
+        predictor = ridge_predictor
+        if not predictor.is_trained:
+            logger.info("Ridge not trained, training on provided data...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+
+        predictions = predictor.predict(featured_data, days=request.days)
+        metrics = predictor.metrics
+
+    logger.info(f"Raw predictions from model: {predictions[:2] if len(predictions) > 0 else 'EMPTY'}")
+
+    # Convert predictions to OHLC format
+    ohlc_predictions = []
+    for pred in predictions:
+        ohlc_predictions.append({
+            "date": pred["date"],
+            "open": pred["price"],
+            "high": pred["upper"],
+            "low": pred["lower"],
+            "close": pred["price"]
+        })
+
+    logger.info(f"Converted OHLC predictions: {ohlc_predictions[:2] if len(ohlc_predictions) > 0 else 'EMPTY'}")
+
+    return PredictionResponse(
+        model=request.model,
+        predictions=ohlc_predictions,
+        rmse=metrics.rmse,
+        mae=metrics.mae,
+        r2_score=metrics.r2_score,
+        mape=metrics.mape,
+        f1_score=metrics.f1_score,
+        accuracy=metrics.accuracy,
+        directional_accuracy=metrics.directional_accuracy,
+        trained_at=metrics.trained_at.isoformat() + "Z",
+        architecture_details=metrics.architecture_details
+    )
+
+
 @app.post("/retrain", response_model=RetrainResponse)
 async def retrain(
-    model: str = Query("xgboost", regex="^(xgboost|lstm_xgboost)$",
-                       description="Model to retrain: 'xgboost' or 'lstm_xgboost'")
+    model: str = Query("xgboost", regex="^(xgboost|ridge)$",
+                       description="Model to retrain: 'xgboost' or 'ridge'")
 ):
     """
     Retrain a model and return updated metrics.
@@ -214,9 +309,9 @@ async def retrain(
     if model == "xgboost":
         feature_cols = get_feature_columns(_featured_data)
         metrics = xgboost_predictor.train(_featured_data, feature_cols)
-    elif model == "lstm_xgboost":
+    elif model == "ridge":
         feature_cols = get_feature_columns(_featured_data)
-        metrics = lstm_predictor.train(_featured_data, feature_cols)
+        metrics = ridge_predictor.train(_featured_data, feature_cols)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
 
@@ -232,6 +327,119 @@ async def retrain(
         trained_at=metrics.trained_at.isoformat() + "Z",
         message=f"{model.capitalize()} model retrained successfully",
         architecture_details=metrics.architecture_details
+    )
+
+
+@app.get("/predict/export")
+async def export_predictions_to_excel(
+    model: str = Query("xgboost", regex="^(xgboost|ridge)$"),
+    days: int = Query(30, ge=1, le=365)
+):
+    """
+    Export predictions to Excel format with date and predicted price.
+    
+    Returns an Excel file (.xlsx) that can be downloaded.
+    Contains columns: Date, Open Price, High (Upper Bound), Low (Lower Bound), Close Price
+    """
+    daily_data, featured_data = _get_data()
+
+    if model == "xgboost":
+        predictor = xgboost_predictor
+        if not predictor.is_trained:
+            logger.info("XGBoost not trained, training now...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+        predictions = predictor.predict(featured_data, days=days)
+    elif model == "ridge":
+        predictor = ridge_predictor
+        if not predictor.is_trained:
+            logger.info("Ridge not trained, training now...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+        predictions = predictor.predict(featured_data, days=days)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
+
+    # Create DataFrame from predictions
+    df = pd.DataFrame([
+        {
+            "Date": pred["date"],
+            "Predicted Price (USD)": pred["price"],
+            "Upper Bound (95% CI)": pred["upper"],
+            "Lower Bound (95% CI)": pred["lower"],
+            "Price Range": pred["upper"] - pred["lower"]
+        }
+        for pred in predictions
+    ])
+
+    # Create Excel workbook
+    excel_buffer = io.BytesIO()
+    
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Predictions')
+        
+        # Get the workbook and worksheet
+        workbook = writer.book
+        worksheet = writer.sheets['Predictions']
+        
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        data_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Format headers
+        for cell in worksheet[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = border
+        
+        # Format data cells and set column widths
+        column_widths = [15, 20, 20, 20, 15]
+        number_format = '0.00'
+        
+        for idx, column in enumerate(worksheet.columns, 1):
+            worksheet.column_dimensions[column[0].column_letter].width = column_widths[idx - 1]
+            
+            for cell in column[1:]:  # Skip header
+                cell.alignment = data_alignment
+                cell.border = border
+                if idx > 1:  # Format price columns as currency
+                    cell.number_format = number_format
+        
+        # Add metadata sheet
+        metadata_ws = workbook.create_sheet('Metadata')
+        metadata_ws['A1'] = "Bitcoin Price Prediction Report"
+        metadata_ws['A1'].font = Font(bold=True, size=14)
+        metadata_ws['A3'] = "Model Used:"
+        metadata_ws['B3'] = model
+        metadata_ws['A4'] = "Prediction Days:"
+        metadata_ws['B4'] = days
+        metadata_ws['A5'] = "Generated At:"
+        metadata_ws['B5'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        metadata_ws.column_dimensions['A'].width = 20
+        metadata_ws.column_dimensions['B'].width = 30
+    
+    excel_buffer.seek(0)
+    
+    filename = f"bitcoin_predictions_{model}_{days}days_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    logger.info(f"Generated Excel export: {filename}")
+    
+    return StreamingResponse(
+        iter([excel_buffer.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 

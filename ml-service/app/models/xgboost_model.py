@@ -76,13 +76,18 @@ class XGBoostPredictor:
 
         logger.info(f"Training XGBoost: {len(X_train)} train, {len(X_test)} test samples")
 
-        # Common hyperparameters
+        # Common hyperparameters - improved for better performance
         common_params = {
-            "n_estimators": 500,
-            "max_depth": 6,
-            "learning_rate": 0.05,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
+            "n_estimators": 600,          # Increased from 500
+            "max_depth": 8,               # Increased from 6
+            "learning_rate": 0.025,       # Reduced for better stability
+            "subsample": 0.85,            # Improved
+            "colsample_bytree": 0.85,     # Improved
+            "colsample_bylevel": 0.8,     # Added
+            "min_child_weight": 1,        # Added
+            "gamma": 0.1,                 # Added
+            "reg_alpha": 0.5,             # L1 regularization
+            "reg_lambda": 1.0,            # L2 regularization
             "random_state": 42,
         }
 
@@ -165,7 +170,15 @@ class XGBoostPredictor:
             directional_accuracy=directional_accuracy,
             trained_at=datetime.utcnow(),
             num_training_samples=len(X_train),
-            num_features=len(feature_columns)
+            num_features=len(feature_columns),
+            architecture_details={
+                "model": "XGBoost Quantile Regression",
+                "n_estimators": 600,
+                "max_depth": 8,
+                "learning_rate": 0.025,
+                "quantiles": [0.025, 0.5, 0.975],
+                "strategy": "Three separate models for 95% confidence intervals"
+            }
         )
 
         logger.info(f"XGBoost training complete. RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.4f}, F1: {f1_score_val:.2f}%, Accuracy: {accuracy:.2f}%")
