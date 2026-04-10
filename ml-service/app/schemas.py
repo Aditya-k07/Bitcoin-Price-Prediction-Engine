@@ -81,5 +81,8 @@ class HistoricalDataRequest(BaseModel):
     model: str
     days: int
     data: List[CandleData]
+<<<<<<< HEAD
     # When true, always refit on this payload (used by Go /api/retrain).
     force_retrain: bool = False
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103

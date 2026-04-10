@@ -21,6 +21,7 @@ type Handler struct {
 	Cache     *cache.RedisCache
 }
 
+<<<<<<< HEAD
 // ExportPredictions proxies Excel export from ML service.
 //
 // GET /api/predict/export?model=xgboost&days=30
@@ -79,6 +80,8 @@ func (h *Handler) ExportPredictions(c *gin.Context) {
 	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content)
 }
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 // NewHandler creates a handler with all dependencies injected.
 func NewHandler(cg *coingecko.Client, ml *mlclient.Client, rc *cache.RedisCache) *Handler {
 	return &Handler{
@@ -138,10 +141,17 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 // GET /api/predict?model=xgboost&days=30
 func (h *Handler) GetPredictions(c *gin.Context) {
 	model := c.DefaultQuery("model", "xgboost")
+<<<<<<< HEAD
 	if model != "xgboost" && model != "ridge" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "invalid_parameter",
 			Message: "model must be 'xgboost' or 'ridge'",
+=======
+	if model != "xgboost" && model != "lstm_xgboost" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_parameter",
+			Message: "model must be 'xgboost' or 'lstm_xgboost'",
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 		})
 		return
 	}
@@ -192,7 +202,11 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 	log.Printf("[Handler] Got %d candles from CoinGecko, sending to ML service...", len(candles))
 
 	// Send fresh data to ML service for prediction
+<<<<<<< HEAD
 	prediction, err := h.MLClient.GetPredictionsWithData(model, days, candles, false)
+=======
+	prediction, err := h.MLClient.GetPredictionsWithData(model, days, candles)
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	if err != nil {
 		log.Printf("[Handler] ML prediction error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
@@ -219,14 +233,22 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 // POST /api/retrain?model=xgboost
 func (h *Handler) PostRetrain(c *gin.Context) {
 	model := c.DefaultQuery("model", "xgboost")
+<<<<<<< HEAD
 	if model != "xgboost" && model != "ridge" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
 			Error:   "invalid_parameter",
 			Message: "model must be 'xgboost' or 'ridge'",
+=======
+	if model != "xgboost" && model != "lstm_xgboost" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:   "invalid_parameter",
+			Message: "model must be 'xgboost' or 'lstm_xgboost'",
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 		})
 		return
 	}
 
+<<<<<<< HEAD
 	currency := c.DefaultQuery("currency", "usd")
 	if currency != "usd" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -248,6 +270,9 @@ func (h *Handler) PostRetrain(c *gin.Context) {
 	}
 
 	prediction, err := h.MLClient.GetPredictionsWithData(model, 30, candles, true)
+=======
+	result, err := h.MLClient.Retrain(model)
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	if err != nil {
 		log.Printf("[Handler] ML retrain error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
@@ -257,13 +282,18 @@ func (h *Handler) PostRetrain(c *gin.Context) {
 		return
 	}
 
+<<<<<<< HEAD
 	// Invalidate cache for this model so future requests use fresh model state.
+=======
+	// Invalidate cache for this model
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	if h.Cache != nil {
 		if err := h.Cache.InvalidateModel(c.Request.Context(), model); err != nil {
 			log.Printf("[Handler] Cache invalidation error (non-fatal): %v", err)
 		}
 	}
 
+<<<<<<< HEAD
 	result := &models.RetrainResponse{
 		Model:               model,
 		RMSE:                prediction.RMSE,
@@ -277,6 +307,8 @@ func (h *Handler) PostRetrain(c *gin.Context) {
 		Message:             "Model refreshed using latest CoinGecko data",
 		ArchitectureDetails: prediction.ArchitectureDetails,
 	}
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	c.JSON(http.StatusOK, result)
 }
 

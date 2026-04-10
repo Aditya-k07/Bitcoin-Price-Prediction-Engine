@@ -174,10 +174,13 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df = add_volatility(df)
     df = add_price_features(df)
 
+<<<<<<< HEAD
     # Momentum (% change over N days) — compact signal for linear + tree models
     df["mom_7"] = df["Close"].pct_change(7)
     df["mom_14"] = df["Close"].pct_change(14)
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
     # Drop rows with NaN (from lag/rolling window computations + last row target)
     initial_len = len(df)
     df.dropna(inplace=True)
@@ -189,6 +192,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+<<<<<<< HEAD
 def rsi_from_close_history(close_history: list, period: int = RSI_PERIOD) -> float:
     """
     RSI from a list of closes (matches training-time RSI logic for inference).
@@ -206,6 +210,8 @@ def rsi_from_close_history(close_history: list, period: int = RSI_PERIOD) -> flo
     return float(100.0 - (100.0 / (1.0 + rs)))
 
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 def get_feature_columns(df: pd.DataFrame) -> list:
     """
     Get the list of feature column names (excludes target and raw OHLCV).

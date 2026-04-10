@@ -8,6 +8,7 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/redis/go-redis/v9 v9.4.0
 )
+<<<<<<< HEAD
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
@@ -40,3 +41,5 @@ require (
 	google.golang.org/protobuf v1.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103

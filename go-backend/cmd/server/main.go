@@ -73,11 +73,18 @@ func main() {
 
 	// Create HTTP server with timeouts
 	srv := &http.Server{
+<<<<<<< HEAD
 		Addr:        fmt.Sprintf(":%s", cfg.Port),
 		Handler:     router,
 		ReadTimeout: 120 * time.Second, // Large OHLC JSON on predict-with-data
 		// ML training can take several minutes; must exceed ML_SERVICE_TIMEOUT.
 		WriteTimeout: time.Duration(cfg.MLServiceTimeout+30) * time.Second,
+=======
+		Addr:         fmt.Sprintf(":%s", cfg.Port),
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 125 * time.Second, // Long timeout for ML predictions
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 		IdleTimeout:  120 * time.Second,
 	}
 

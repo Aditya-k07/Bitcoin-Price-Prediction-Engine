@@ -1,3 +1,8 @@
+<<<<<<< HEAD
+=======
+version: '3.8'
+
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 services:
   # ── Redis (Cache Layer) ──
   redis:
@@ -38,6 +43,7 @@ services:
     networks:
       - coinsight-net
 
+<<<<<<< HEAD
   # ── Go Backend (API Orchestrator) ──
   go-backend:
     build:
@@ -61,6 +67,11 @@ services:
       - coinsight-net
 
   # ── React Frontend (Vite + Nginx) ──
+=======
+  # ── React Frontend (Vite + Nginx) ──
+  # NOTE: Frontend fetches predictions directly from ML service at http://localhost:8000/predict
+  # Go backend has been removed as it's not needed for this architecture
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
   frontend:
     build:
       context: ./frontend
@@ -68,9 +79,12 @@ services:
     container_name: coinsight-frontend
     ports:
       - "3000:3000"
+<<<<<<< HEAD
     depends_on:
       - go-backend
       - ml-service
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
     networks:
       - coinsight-net
 

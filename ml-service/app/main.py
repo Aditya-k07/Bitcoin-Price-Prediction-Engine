@@ -43,8 +43,11 @@ ridge_predictor = RidgePredictor()
 # Global data cache
 _daily_data = None
 _featured_data = None
+<<<<<<< HEAD
 _latest_featured_data = None
 _latest_signature = None
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 _data_lock = threading.Lock()
 
 
@@ -218,8 +221,11 @@ async def predict_with_data(request: HistoricalDataRequest):
 
     logger.info(f"[/predict_with_data] Received {len(request.data)} candles, predicting {request.days} days")
 
+<<<<<<< HEAD
     global _latest_featured_data, _latest_signature
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
     try:
         # Convert received OHLC data to DataFrame
         candle_dicts = [
@@ -234,9 +240,12 @@ async def predict_with_data(request: HistoricalDataRequest):
         ]
         daily_data = load_from_coingecko_ohlc(candle_dicts)
         featured_data = engineer_features(daily_data)
+<<<<<<< HEAD
         _latest_featured_data = featured_data.copy()
         latest_ts = int(candle_dicts[-1]["timestamp"]) if candle_dicts else 0
         data_signature = (request.model, len(candle_dicts), latest_ts)
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 
     except Exception as e:
         logger.error(f"Failed to process OHLC data: {e}")
@@ -244,6 +253,7 @@ async def predict_with_data(request: HistoricalDataRequest):
 
     if request.model == "xgboost":
         predictor = xgboost_predictor
+<<<<<<< HEAD
         feature_cols = get_feature_columns(featured_data)
         # Retrain when cold, CoinGecko slice changed, or caller explicitly retrains.
         if (
@@ -254,12 +264,19 @@ async def predict_with_data(request: HistoricalDataRequest):
             logger.info("Training XGBoost on provided data...")
             predictor.train(featured_data, feature_cols)
             _latest_signature = data_signature
+=======
+        if not predictor.is_trained:
+            logger.info("XGBoost not trained, training on provided data...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 
         predictions = predictor.predict(featured_data, days=request.days)
         metrics = predictor.metrics
 
     elif request.model == "ridge":
         predictor = ridge_predictor
+<<<<<<< HEAD
         feature_cols = get_feature_columns(featured_data)
         if (
             request.force_retrain
@@ -269,6 +286,12 @@ async def predict_with_data(request: HistoricalDataRequest):
             logger.info("Training Ridge on provided data...")
             predictor.train(featured_data, feature_cols)
             _latest_signature = data_signature
+=======
+        if not predictor.is_trained:
+            logger.info("Ridge not trained, training on provided data...")
+            feature_cols = get_feature_columns(featured_data)
+            predictor.train(featured_data, feature_cols)
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 
         predictions = predictor.predict(featured_data, days=request.days)
         metrics = predictor.metrics
@@ -359,6 +382,7 @@ async def export_predictions_to_excel(
     Returns an Excel file (.xlsx) that can be downloaded.
     Contains columns: Date, Open Price, High (Upper Bound), Low (Lower Bound), Close Price
     """
+<<<<<<< HEAD
     global _latest_featured_data
 
     # Prefer dataset-backed data, but gracefully fall back to the latest
@@ -372,6 +396,9 @@ async def export_predictions_to_excel(
                 detail="No historical dataset available for export. Generate predictions first."
             )
         featured_data = _latest_featured_data.copy()
+=======
+    daily_data, featured_data = _get_data()
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 
     if model == "xgboost":
         predictor = xgboost_predictor

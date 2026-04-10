@@ -8,7 +8,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+<<<<<<< HEAD
 	"sync"
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	"time"
 
 	"github.com/coinsight/go-backend/internal/models"
@@ -18,8 +21,11 @@ import (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+<<<<<<< HEAD
 	mu         sync.RWMutex
 	cache      map[string][]models.CandleData
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 }
 
 // NewClient creates a CoinGecko API client with the given base URL and timeout.
@@ -29,6 +35,7 @@ func NewClient(baseURL string, timeoutSec int) *Client {
 		httpClient: &http.Client{
 			Timeout: time.Duration(timeoutSec) * time.Second,
 		},
+<<<<<<< HEAD
 		cache: make(map[string][]models.CandleData),
 	}
 }
@@ -37,10 +44,24 @@ func NewClient(baseURL string, timeoutSec int) *Client {
 //
 // Instead of relying on CoinGecko's /ohlc endpoint (which can be limited),
 // this method uses /market_chart and aggregates price points into daily OHLC.
+=======
+	}
+}
+
+// GetOHLC fetches OHLC candlestick data for Bitcoin.
+//
+// CoinGecko OHLC endpoint returns arrays of [timestamp, open, high, low, close].
+// Supported days values: 1, 7, 14, 30, 90, 180, 365, max.
+// Candle granularity is automatic:
+//   - 1-2 days: 30-minute candles
+//   - 3-30 days: 4-hour candles
+//   - 31+ days: daily candles
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error) {
 	if currency == "" {
 		currency = "usd"
 	}
+<<<<<<< HEAD
 	url := fmt.Sprintf("%s/coins/bitcoin/market_chart?vs_currency=%s&days=%d", c.baseURL, currency, days)
 
 	log.Printf("[CoinGecko] Fetching market chart data for %d days in %s...", days, currency)
@@ -52,11 +73,21 @@ func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error)
 			return cached, nil
 		}
 		return nil, fmt.Errorf("coingecko market_chart request failed: %w", err)
+=======
+	url := fmt.Sprintf("%s/coins/bitcoin/ohlc?vs_currency=%s&days=%d", c.baseURL, currency, days)
+
+	log.Printf("[CoinGecko] Fetching OHLC data for %d days in %s...", days, currency)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("coingecko OHLC request failed: %w", err)
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+<<<<<<< HEAD
 		if cached := c.getCachedCandles(days, currency); len(cached) > 0 {
 			log.Printf("[CoinGecko] Using cached candles after status %d", resp.StatusCode)
 			return cached, nil
@@ -133,10 +164,36 @@ func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error)
 	}
 	c.setCachedCandles(days, currency, candles)
 
+=======
+		return nil, fmt.Errorf("coingecko returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// CoinGecko returns: [[timestamp, open, high, low, close], ...]
+	var rawData [][]float64
+	if err := json.NewDecoder(resp.Body).Decode(&rawData); err != nil {
+		return nil, fmt.Errorf("failed to parse OHLC response: %w", err)
+	}
+
+	candles := make([]models.CandleData, 0, len(rawData))
+	for _, row := range rawData {
+		if len(row) < 5 {
+			continue // skip malformed rows
+		}
+		candles = append(candles, models.CandleData{
+			Timestamp: int64(row[0]),
+			Open:      row[1],
+			High:      row[2],
+			Low:       row[3],
+			Close:     row[4],
+		})
+	}
+
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	log.Printf("[CoinGecko] Received %d candles", len(candles))
 	return candles, nil
 }
 
+<<<<<<< HEAD
 func cacheKey(days int, currency string) string {
 	return fmt.Sprintf("%s:%d", currency, days)
 }
@@ -175,6 +232,8 @@ func (c *Client) setCachedCandles(days int, currency string, candles []models.Ca
 	c.cache[key] = out
 }
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 // SimplePrice holds the response from CoinGecko simple/price endpoint.
 type SimplePrice struct {
 	Bitcoin struct {

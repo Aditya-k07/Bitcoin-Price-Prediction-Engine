@@ -25,7 +25,10 @@ func SetupRouter(handler *Handler, wsHub *websocket.Hub) *gin.Engine {
 	{
 		api.GET("/historical", handler.GetHistorical)
 		api.GET("/predict", handler.GetPredictions)
+<<<<<<< HEAD
 		api.GET("/predict/export", handler.ExportPredictions)
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 		api.POST("/retrain", handler.PostRetrain)
 		api.GET("/health", handler.HealthCheck)
 	}

@@ -35,8 +35,12 @@ func Load() *Config {
 		Port: getEnv("PORT", "8080"),
 
 		MLServiceURL:     getEnv("ML_SERVICE_URL", "http://localhost:8000"),
+<<<<<<< HEAD
 		// Training XGBoost (3 estimators) often exceeds 30s; align with frontend retrain timeout.
 		MLServiceTimeout: getEnvInt("ML_SERVICE_TIMEOUT", 600),
+=======
+		MLServiceTimeout: getEnvInt("ML_SERVICE_TIMEOUT", 30),
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 
 		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),

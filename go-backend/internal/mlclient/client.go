@@ -9,7 +9,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+<<<<<<< HEAD
 	"net/url"
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	"sync"
 	"time"
 
@@ -39,6 +42,7 @@ type Client struct {
 	lastFailureTime time.Time
 }
 
+<<<<<<< HEAD
 // DownloadPredictionsExcel fetches prediction export from ML service.
 func (c *Client) DownloadPredictionsExcel(model string, days int) ([]byte, string, error) {
 	if !c.isAvailable() {
@@ -69,6 +73,8 @@ func (c *Client) DownloadPredictionsExcel(model string, days int) ([]byte, strin
 	return content, resp.Header.Get("Content-Disposition"), nil
 }
 
+=======
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 // NewClient creates an ML service client with circuit breaker.
 func NewClient(baseURL string, timeoutSec int) *Client {
 	return &Client{
@@ -158,13 +164,18 @@ func (c *Client) GetPredictions(model string, days int) (*models.PredictionRespo
 }
 
 // GetPredictionsWithData sends fresh OHLC data to the ML service for predictions.
+<<<<<<< HEAD
 // If forceRetrain is true, the ML service refits on this payload (used for POST /api/retrain).
 func (c *Client) GetPredictionsWithData(model string, days int, candles []models.CandleData, forceRetrain bool) (*models.PredictionResponse, error) {
+=======
+func (c *Client) GetPredictionsWithData(model string, days int, candles []models.CandleData) (*models.PredictionResponse, error) {
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	if !c.isAvailable() {
 		return nil, fmt.Errorf("ML service unavailable (circuit breaker open)")
 	}
 
 	url := fmt.Sprintf("%s/predict_with_data", c.baseURL)
+<<<<<<< HEAD
 	log.Printf("[MLClient] Fetching predictions with data: model=%s, days=%d, candles=%d, forceRetrain=%v", model, days, len(candles), forceRetrain)
 
 	// Build request payload
@@ -173,6 +184,15 @@ func (c *Client) GetPredictionsWithData(model string, days int, candles []models
 		"days":           days,
 		"data":           candles,
 		"force_retrain": forceRetrain,
+=======
+	log.Printf("[MLClient] Fetching predictions with data: model=%s, days=%d, candles=%d", model, days, len(candles))
+
+	// Build request payload
+	requestData := map[string]interface{}{
+		"model": model,
+		"days": days,
+		"data": candles,
+>>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	}
 
 	payload, err := json.Marshal(requestData)
