@@ -92,10 +92,10 @@ class RidgePredictor:
 
         # Time-based split — never shuffle for time series!
         split_idx = int(len(X) * (1 - test_size))
-        if split_idx < 10 or len(X) - split_idx < 5:
+        if split_idx < 5 or len(X) - split_idx < 3:
             raise ValueError(
                 f"Not enough rows for Ridge train/test split (n={len(X)}). "
-                "Need more historical candles."
+                "Need more historical candles (at least 8-10 days)."
             )
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]

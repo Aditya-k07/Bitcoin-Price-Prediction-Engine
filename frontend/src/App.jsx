@@ -245,14 +245,16 @@ export default function App() {
           <select
             className="days-selector__select"
             value={historicalDays}
-            onChange={(e) => handleHistoricalDaysChange(Number(e.target.value))}
+            onChange={(e) => handleHistoricalDaysChange(e.target.value === 'max' ? 'max' : Number(e.target.value))}
           >
+            <option value={1}>24 hours</option>
             <option value={7}>7 days</option>
             <option value={14}>14 days</option>
             <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
+            <option value={90}>3 months</option>
+            <option value={180}>6 months</option>
             <option value={365}>1 year</option>
+            <option value="max">All time</option>
           </select>
         </div>
 

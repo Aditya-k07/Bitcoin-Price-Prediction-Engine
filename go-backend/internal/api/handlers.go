@@ -64,7 +64,7 @@ func (h *Handler) ExportPredictions(c *gin.Context) {
 
 	// Best-effort warmup: refresh ML service context, but don't fail export if
 	// CoinGecko is temporarily unavailable (rate limit/network hiccup).
-	candles, err := h.CoinGecko.GetOHLC(365, currency)
+	candles, err := h.CoinGecko.GetOHLC("365", currency)
 	if err != nil {
 		log.Printf("[Handler] CoinGecko OHLC warmup skipped (export): %v", err)
 	} else if _, err := h.MLClient.GetPredictionsWithData(model, days, candles, false); err != nil {
@@ -114,7 +114,11 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 		return
 	}
 
-	candles, err := h.CoinGecko.GetOHLC(days, currency)
+	// Fetch historical data from CoinGecko
+	daysInQuery := c.DefaultQuery("days", "90")
+	// For historical view, we allow "max" or any positive integer string.
+	// We'll pass it directly to GetOHLC which now handles strings.
+	candles, err := h.CoinGecko.GetOHLC(daysInQuery, currency)
 	if err != nil {
 		log.Printf("[Handler] CoinGecko OHLC error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
@@ -179,7 +183,7 @@ func (h *Handler) GetPredictions(c *gin.Context) {
 
 	// Fetch 1 year of historical data from CoinGecko (365 days)
 	log.Printf("[Handler] Fetching 1 year of historical data from CoinGecko...")
-	candles, err := h.CoinGecko.GetOHLC(365, currency)
+	candles, err := h.CoinGecko.GetOHLC("365", currency)
 	if err != nil {
 		log.Printf("[Handler] CoinGecko OHLC error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
@@ -237,7 +241,7 @@ func (h *Handler) PostRetrain(c *gin.Context) {
 	}
 
 	// Retrain/refresh model on latest market data from CoinGecko.
-	candles, err := h.CoinGecko.GetOHLC(365, currency)
+	candles, err := h.CoinGecko.GetOHLC("365", currency)
 	if err != nil {
 		log.Printf("[Handler] CoinGecko OHLC error (retrain): %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{

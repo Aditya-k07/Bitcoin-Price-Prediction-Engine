@@ -14,10 +14,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Configuration
-LAG_DAYS = [1, 3, 7, 14, 30]
-ROLLING_WINDOWS = [7, 14, 30]
+LAG_DAYS = [1, 3, 7]
+ROLLING_WINDOWS = [3, 7]
 RSI_PERIOD = 14
-VOLATILITY_WINDOW = 14
+VOLATILITY_WINDOW = 7
 
 
 def add_lag_features(df: pd.DataFrame, target_col: str = "Close") -> pd.DataFrame:

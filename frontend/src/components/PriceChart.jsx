@@ -17,7 +17,9 @@ export default function PriceChart({ historicalData, predictions, isLoading }) {
   const { historicalCandles, predictionCandles } = useMemo(() => {
     // Historical candlestick data: [{x: timestamp, y: [O, H, L, C]}]
     const historicalCandles = (historicalData || []).map((d) => {
-      const x = d.timestamp instanceof Date ? d.timestamp : new Date(d.timestamp);
+      // Backend (simple_backend.py) sends 'date', but some older versions or components might use 'timestamp'
+      const dateVal = d.date || d.timestamp;
+      const x = dateVal instanceof Date ? dateVal : new Date(dateVal);
       const y = [
         parseFloat(d.open) || 0,
         parseFloat(d.high) || 0,

@@ -107,7 +107,7 @@ class XGBoostPredictor:
             "gamma": 0.1,
             "reg_alpha": 0.5,
             "reg_lambda": 1.0,
-            "random_state": 42,
+            "random_state": None,
         }
 
         # --- Median model (point estimate) ---
@@ -200,13 +200,6 @@ class XGBoostPredictor:
 
         Uses recursive forecasting: predict day t+1, then use that prediction
         as input for day t+2, and so on.
-
-        Args:
-            df: Feature-engineered DataFrame (used to get the last known state).
-            days: Number of days to predict into the future.
-
-        Returns:
-            List of dicts with date, price, lower, upper for each predicted day.
         """
         if self.model_median is None:
             raise RuntimeError(
@@ -215,18 +208,22 @@ class XGBoostPredictor:
 
         predictions = []
         last_date = df.index[-1]
-
-        # Seed the recursive prediction with the most recent feature row.
-        current_features = df[self.feature_columns].iloc[-1:].values.copy()
+        
+        # Keep track of close prices to recalculate features recursively
+        close_history = df["Close"].astype(float).tolist()
 
         for i in range(days):
             pred_date = last_date + pd.Timedelta(days=i + 1)
 
+            # Build feature vector from current history
+            current_features = self._build_feature_vector(close_history)
+
+            # Predict median, lower, and upper bounds
             price = float(self.model_median.predict(current_features)[0])
             lower = float(self.model_lower.predict(current_features)[0])
             upper = float(self.model_upper.predict(current_features)[0])
 
-            # Enforce lower <= price <= upper
+            # Enforce logical constraints: lower <= price <= upper
             lower = min(lower, price)
             upper = max(upper, price)
 
@@ -239,10 +236,8 @@ class XGBoostPredictor:
                 }
             )
 
-            # Shift feature vector for next step
-            current_features = self._update_features_for_next_step(
-                current_features, price
-            )
+            # Add the predicted price to history for the next step's features
+            close_history.append(price)
 
         return predictions
 

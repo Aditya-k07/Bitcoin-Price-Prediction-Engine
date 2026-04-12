@@ -8,10 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-<<<<<<< HEAD
 	"sync"
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	"time"
 
 	"github.com/coinsight/go-backend/internal/models"
@@ -21,11 +18,8 @@ import (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
-<<<<<<< HEAD
 	mu         sync.RWMutex
 	cache      map[string][]models.CandleData
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 }
 
 // NewClient creates a CoinGecko API client with the given base URL and timeout.
@@ -35,16 +29,7 @@ func NewClient(baseURL string, timeoutSec int) *Client {
 		httpClient: &http.Client{
 			Timeout: time.Duration(timeoutSec) * time.Second,
 		},
-<<<<<<< HEAD
 		cache: make(map[string][]models.CandleData),
-	}
-}
-
-// GetOHLC fetches OHLC-like daily candles for Bitcoin.
-//
-// Instead of relying on CoinGecko's /ohlc endpoint (which can be limited),
-// this method uses /market_chart and aggregates price points into daily OHLC.
-=======
 	}
 }
 
@@ -56,115 +41,31 @@ func NewClient(baseURL string, timeoutSec int) *Client {
 //   - 1-2 days: 30-minute candles
 //   - 3-30 days: 4-hour candles
 //   - 31+ days: daily candles
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
-func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error) {
+func (c *Client) GetOHLC(days string, currency string) ([]models.CandleData, error) {
 	if currency == "" {
 		currency = "usd"
 	}
-<<<<<<< HEAD
-	url := fmt.Sprintf("%s/coins/bitcoin/market_chart?vs_currency=%s&days=%d", c.baseURL, currency, days)
+	if days == "" {
+		days = "30"
+	}
 
-	log.Printf("[CoinGecko] Fetching market chart data for %d days in %s...", days, currency)
+	// Try cache first
+	if cached := c.getCachedCandles(days, currency); len(cached) > 0 {
+		log.Printf("[CoinGecko] Using cached candles for %s days", days)
+		return cached, nil
+	}
 
-	resp, err := c.httpClient.Get(url)
-	if err != nil {
-		if cached := c.getCachedCandles(days, currency); len(cached) > 0 {
-			log.Printf("[CoinGecko] Using cached candles after request error: %v", err)
-			return cached, nil
-		}
-		return nil, fmt.Errorf("coingecko market_chart request failed: %w", err)
-=======
-	url := fmt.Sprintf("%s/coins/bitcoin/ohlc?vs_currency=%s&days=%d", c.baseURL, currency, days)
-
-	log.Printf("[CoinGecko] Fetching OHLC data for %d days in %s...", days, currency)
+	url := fmt.Sprintf("%s/coins/bitcoin/ohlc?vs_currency=%s&days=%s", c.baseURL, currency, days)
+	log.Printf("[CoinGecko] Fetching OHLC data for %s days in %s...", days, currency)
 
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("coingecko OHLC request failed: %w", err)
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-<<<<<<< HEAD
-		if cached := c.getCachedCandles(days, currency); len(cached) > 0 {
-			log.Printf("[CoinGecko] Using cached candles after status %d", resp.StatusCode)
-			return cached, nil
-		}
-		return nil, fmt.Errorf("coingecko returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// CoinGecko market_chart returns: {"prices": [[timestamp_ms, price], ...], ...}
-	var payload struct {
-		Prices [][]float64 `json:"prices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("failed to parse market_chart response: %w", err)
-	}
-	if len(payload.Prices) == 0 {
-		return nil, fmt.Errorf("coingecko market_chart returned empty prices")
-	}
-
-	type dayCandle struct {
-		tsMs int64
-		open float64
-		high float64
-		low  float64
-		close float64
-	}
-
-	dayOrder := make([]string, 0, len(payload.Prices))
-	dayMap := make(map[string]*dayCandle, len(payload.Prices))
-
-	for _, row := range payload.Prices {
-		if len(row) < 2 {
-			continue
-		}
-		tsMs := int64(row[0])
-		price := row[1]
-		day := time.UnixMilli(tsMs).UTC().Format("2006-01-02")
-
-		if dc, ok := dayMap[day]; ok {
-			if price > dc.high {
-				dc.high = price
-			}
-			if price < dc.low {
-				dc.low = price
-			}
-			dc.close = price
-			continue
-		}
-
-		dayMap[day] = &dayCandle{
-			tsMs: tsMs,
-			open: price,
-			high: price,
-			low:  price,
-			close: price,
-		}
-		dayOrder = append(dayOrder, day)
-	}
-
-	candles := make([]models.CandleData, 0, len(dayOrder))
-	for _, day := range dayOrder {
-		dc := dayMap[day]
-		candles = append(candles, models.CandleData{
-			Timestamp: dc.tsMs,
-			Open:      dc.open,
-			High:      dc.high,
-			Low:       dc.low,
-			Close:     dc.close,
-		})
-	}
-
-	// Keep only the last requested number of daily candles.
-	if len(candles) > days {
-		candles = candles[len(candles)-days:]
-	}
-	c.setCachedCandles(days, currency, candles)
-
-=======
 		return nil, fmt.Errorf("coingecko returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -188,17 +89,19 @@ func (c *Client) GetOHLC(days int, currency string) ([]models.CandleData, error)
 		})
 	}
 
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	log.Printf("[CoinGecko] Received %d candles", len(candles))
+	
+	// Cache the result
+	c.setCachedCandles(days, currency, candles)
+	
 	return candles, nil
 }
 
-<<<<<<< HEAD
-func cacheKey(days int, currency string) string {
-	return fmt.Sprintf("%s:%d", currency, days)
+func cacheKey(days string, currency string) string {
+	return fmt.Sprintf("%s:%s", currency, days)
 }
 
-func (c *Client) getCachedCandles(days int, currency string) []models.CandleData {
+func (c *Client) getCachedCandles(days string, currency string) []models.CandleData {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	key := cacheKey(days, currency)
@@ -207,23 +110,13 @@ func (c *Client) getCachedCandles(days int, currency string) []models.CandleData
 		copy(out, candles)
 		return out
 	}
-	// Fallback: use any larger cached range and trim to requested days.
-	for _, candidate := range []int{365, 180, 90, 30, 14, 7} {
-		if candidate < days {
-			continue
-		}
-		k := cacheKey(candidate, currency)
-		if candles, ok := c.cache[k]; ok && len(candles) >= days {
-			start := len(candles) - days
-			out := make([]models.CandleData, days)
-			copy(out, candles[start:])
-			return out
-		}
-	}
+	
+	// Optional: recursive fallback logic for numeric days could stay here, 
+	// but let's keep it simple for now as string-based cache is more precise.
 	return nil
 }
 
-func (c *Client) setCachedCandles(days int, currency string, candles []models.CandleData) {
+func (c *Client) setCachedCandles(days string, currency string, candles []models.CandleData) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	key := cacheKey(days, currency)
@@ -232,8 +125,6 @@ func (c *Client) setCachedCandles(days int, currency string, candles []models.Ca
 	c.cache[key] = out
 }
 
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 // SimplePrice holds the response from CoinGecko simple/price endpoint.
 type SimplePrice struct {
 	Bitcoin struct {

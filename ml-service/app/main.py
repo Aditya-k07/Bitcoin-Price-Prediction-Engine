@@ -23,7 +23,7 @@ import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from app.data_loader import load_daily_data, load_from_coingecko_ohlc
+from app.data_loader import load_daily_data, load_from_coingecko_ohlc, fetch_coingecko_ohlc
 from app.features import engineer_features, get_feature_columns
 from app.models.xgboost_model import XGBoostPredictor
 from app.models.ridge_model import RidgePredictor
@@ -321,7 +321,23 @@ async def retrain(
     logger.info(f"Retraining {model} model...")
     with _data_lock:
         csv_path = os.environ.get("BTC_DATA_PATH", None)
-        _daily_data = load_daily_data(csv_path)
+        base_data = load_daily_data(csv_path)
+        
+        # Try to supplement with live data from CoinGecko
+        try:
+            fresh_data = fetch_coingecko_ohlc(days=30)
+            if not fresh_data.empty:
+                # Combine base data (CSV) with fresh data, removing duplicates (favor fresh)
+                # Ensure fresh_data is appended and we keep the latest values for overlapping dates
+                _daily_data = pd.concat([base_data, fresh_data])
+                _daily_data = _daily_data[~_daily_data.index.duplicated(keep='last')].sort_index()
+                logger.info(f"Combined historical CSV with {len(fresh_data)} days of fresh CoinGecko data.")
+            else:
+                _daily_data = base_data
+        except Exception as e:
+            logger.warning(f"Could not fetch fresh data for retraining, using CSV data only: {e}")
+            _daily_data = base_data
+            
         _featured_data = engineer_features(_daily_data)
 
     if model == "xgboost":

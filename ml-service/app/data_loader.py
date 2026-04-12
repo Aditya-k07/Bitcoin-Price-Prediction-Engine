@@ -8,11 +8,56 @@ import logging
 import pandas as pd
 import numpy as np
 
+import requests
+from datetime import datetime
+import time
+
 logger = logging.getLogger(__name__)
 
 # Path to the dataset relative to the ml-service directory
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 DEFAULT_CSV_PATH = os.path.join(DATA_DIR, "btc_historical.csv")
+
+
+def fetch_coingecko_ohlc(days: int = 30, currency: str = "usd") -> pd.DataFrame:
+    """
+    Fetch the latest OHLC data from CoinGecko public API.
+    
+    CoinGecko free tier /coins/bitcoin/ohlc endpoint returns:
+    [
+      [timestamp, open, high, low, close],
+      ...
+    ]
+    Intervals: 1/7/14/30 days = 30 min intervals; 90+ days = 4 hour intervals.
+    """
+    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/ohlc"
+    params = {
+        "vs_currency": currency,
+        "days": days
+    }
+    
+    logger.info(f"Fetching latest {days} days of BTC/{currency} from CoinGecko...")
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        if not data:
+            raise ValueError("Empty data returned from CoinGecko")
+            
+        # Convert to DataFrame
+        df = pd.DataFrame(data, columns=["timestamp", "Open", "High", "Low", "Close"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df.set_index("timestamp", inplace=True)
+        
+        # Resample to daily to match our model's expectation
+        daily = resample_to_daily(df)
+        logger.info(f"Successfully fetched and processed {len(daily)} days of fresh data from CoinGecko.")
+        return daily
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch data from CoinGecko: {e}")
+        return pd.DataFrame()
 
 
 def load_raw_data(csv_path: str = None) -> pd.DataFrame:
