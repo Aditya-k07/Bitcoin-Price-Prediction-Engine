@@ -1,0 +1,38 @@
+# Backend service - Python/Flask
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for backend
+RUN pip install --no-cache-dir \
+    Flask==3.0.0 \
+    flask-cors==4.0.0 \
+    requests==2.31.0 \
+    pandas==2.2.0 \
+    numpy==1.26.4
+
+# Copy backend and ML service code
+COPY simple_backend.py .
+COPY ml-service/ ./ml-service/
+
+# Install ML service dependencies
+RUN pip install --no-cache-dir \
+    scikit-learn==1.4.0 \
+    xgboost==2.0.3 \
+    joblib==1.3.2 \
+    openpyxl==3.1.2
+
+# Create data directory (will be overridden by Docker volume mount)
+RUN mkdir -p /app/ml-service/data
+
+EXPOSE 8080
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+CMD ["python", "simple_backend.py"]

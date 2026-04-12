@@ -14,56 +14,27 @@ const mlService = axios.create({
 });
 
 /**
-<<<<<<< HEAD
  * Fetch historical OHLC candlestick data via Go backend.
  * @param {number} days - Number of historical days (1-365)
-=======
- * Fetch historical OHLC candlestick data from CoinGecko.
- * NOTE: CoinGecko free tier limits OHLC data to approximately 24 days (daily candles).
- * Requesting more days will still return only the most recent ~24 days of data.
- * @param {number} days - Number of historical days (capped at 90, but CoinGecko free tier returns max ~24)
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
  * @param {string} currency - Currency (usd, eur, gbp, etc.)
  * @returns {Promise<{data: Array, source: string}>}
  */
 export const fetchHistorical = async (days = 30, currency = 'usd') => {
   try {
     const response = await axios.get(
-<<<<<<< HEAD
       `/api/historical?days=${days}&currency=${currency}`,
       { timeout: 20000 }
     );
     return response.data;
   } catch (error) {
     console.error('Error fetching historical data:', error);
-=======
-      `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${currency}&days=${Math.min(days, 90)}`,
-      { timeout: 10000 }
-    );
-    // CoinGecko returns [[timestamp, o, h, l, c], ...]
-    const data = response.data.map(([timestamp, open, high, low, close]) => ({
-      timestamp: new Date(timestamp),
-      open,
-      high,
-      low,
-      close,
-    }));
-    return { data, source: 'coingecko', cached: false };
-  } catch (error) {
-    console.error('Error fetching from CoinGecko:', error);
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
     throw new Error(`Failed to fetch historical data: ${error.message}`);
   }
 };
 
 /**
-<<<<<<< HEAD
  * Fetch price predictions via Go backend.
  * @param {string} model - 'xgboost' or 'ridge'
-=======
- * Fetch price predictions from the ML service via nginx proxy.
- * @param {string} model - 'xgboost' or 'lstm_xgboost'
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
  * @param {number} days - Prediction horizon (default 30)
  * @param {string} currency - Currency (currently USD only in ML service)
  * @returns {Promise<{model: string, predictions: Array, rmse: number, metrics...}>}
@@ -71,11 +42,7 @@ export const fetchHistorical = async (days = 30, currency = 'usd') => {
 export const fetchPredictions = async (model = 'xgboost', days = 30, currency = 'usd') => {
   try {
     const response = await axios.get(
-<<<<<<< HEAD
       `/api/predict?model=${model}&days=${days}&currency=${currency}`,
-=======
-      `/api/ml/predict?model=${model}&days=${days}`,
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
       { timeout: 120000 }
     );
     return response.data;
@@ -86,23 +53,14 @@ export const fetchPredictions = async (model = 'xgboost', days = 30, currency = 
 };
 
 /**
-<<<<<<< HEAD
  * Trigger model retraining via Go backend.
  * @param {string} model - 'xgboost' or 'ridge'
-=======
- * Trigger model retraining via ML service (through nginx proxy).
- * @param {string} model - 'xgboost' or 'lstm_xgboost'
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
  * @returns {Promise<{model: string, rmse: number, metrics...}>}
  */
 export const retrainModel = async (model = 'xgboost') => {
   try {
     const response = await axios.post(
-<<<<<<< HEAD
       `/api/retrain?model=${model}`,
-=======
-      `/api/ml/retrain?model=${model}`,
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
       {},
       { timeout: 600000 } // 10 minute timeout for retraining
     );
@@ -115,22 +73,14 @@ export const retrainModel = async (model = 'xgboost') => {
 
 /**
  * Download predictions as Excel file.
-<<<<<<< HEAD
  * @param {string} model - 'xgboost' or 'ridge'
-=======
- * @param {string} model - 'xgboost' or 'lstm_xgboost'
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
  * @param {number} days - Prediction horizon (default 30)
  * @returns {Promise<void>}
  */
 export const downloadPredictionsExcel = async (model = 'xgboost', days = 30) => {
   try {
     const response = await axios.get(
-<<<<<<< HEAD
       `/api/predict/export?model=${model}&days=${days}`,
-=======
-      `/api/ml/predict/export?model=${model}&days=${days}`,
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
       { responseType: 'blob', timeout: 120000 }
     );
     
@@ -161,24 +111,18 @@ export const downloadPredictionsExcel = async (model = 'xgboost', days = 30) => 
 };
 
 /**
-<<<<<<< HEAD
  * Check backend health status (includes ML service status).
-=======
- * Check ML service health status via nginx proxy.
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
  * @returns {Promise<Object>}
  */
 export const checkHealth = async () => {
   try {
-<<<<<<< HEAD
     const response = await axios.get('/api/health', { timeout: 10000 });
-=======
-    const response = await axios.get('/api/ml/health', { timeout: 10000 });
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
     return response.data;
   } catch (error) {
     console.error('Health check failed:', error);
     throw error;
   }
 };
+
+export default mlService;
 

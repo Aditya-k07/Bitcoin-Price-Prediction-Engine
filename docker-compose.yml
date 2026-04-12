@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-=======
-version: '3.8'
-
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 services:
   # ── Redis (Cache Layer) ──
   redis:
@@ -33,45 +28,42 @@ services:
       - ml-models:/app/saved_models           # Persist trained models
     environment:
       - PORT=8000
-      - BTC_DATA_PATH=/app/data/btc_historical.csv
+      - BTC_DATA_PATH=/app/data/btcusd_1-min_data.csv
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s  # Give time for initial model training
+      retries: 5
+      start_period: 120s  # Extended to 2 minutes for model initialization
     networks:
       - coinsight-net
 
-<<<<<<< HEAD
-  # ── Go Backend (API Orchestrator) ──
-  go-backend:
+  # ── Simple Backend (Python/Flask) ──
+  backend:
     build:
-      context: ./go-backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     container_name: coinsight-backend
     ports:
       - "8080:8080"
+    volumes:
+      - ./ml-service/data:/app/ml-service/data  # Share dataset with backend
     environment:
-      - PORT=8080
       - ML_SERVICE_URL=http://ml-service:8000
-      - ML_SERVICE_TIMEOUT=600
-      - REDIS_ADDR=redis:6379
-      - REDIS_PASSWORD=
-      - REDIS_DB=0
-      - CACHE_TTL=300
+      - BACKEND_PORT=8080
+      - BTC_DATA_PATH=/app/ml-service/data/btcusd_1-min_data.csv
     depends_on:
-      - ml-service
-      - redis
+      ml-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - coinsight-net
 
   # ── React Frontend (Vite + Nginx) ──
-=======
-  # ── React Frontend (Vite + Nginx) ──
-  # NOTE: Frontend fetches predictions directly from ML service at http://localhost:8000/predict
-  # Go backend has been removed as it's not needed for this architecture
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
   frontend:
     build:
       context: ./frontend
@@ -79,12 +71,9 @@ services:
     container_name: coinsight-frontend
     ports:
       - "3000:3000"
-<<<<<<< HEAD
     depends_on:
-      - go-backend
-      - ml-service
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
+      backend:
+        condition: service_healthy
     networks:
       - coinsight-net
 

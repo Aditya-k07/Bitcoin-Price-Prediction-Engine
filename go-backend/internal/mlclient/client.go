@@ -9,10 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-<<<<<<< HEAD
 	"net/url"
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	"sync"
 	"time"
 
@@ -42,39 +39,6 @@ type Client struct {
 	lastFailureTime time.Time
 }
 
-<<<<<<< HEAD
-// DownloadPredictionsExcel fetches prediction export from ML service.
-func (c *Client) DownloadPredictionsExcel(model string, days int) ([]byte, string, error) {
-	if !c.isAvailable() {
-		return nil, "", fmt.Errorf("ML service unavailable (circuit breaker open)")
-	}
-
-	u := fmt.Sprintf("%s/predict/export?model=%s&days=%d", c.baseURL, url.QueryEscape(model), days)
-	resp, err := c.httpClient.Get(u)
-	if err != nil {
-		c.recordFailure()
-		return nil, "", fmt.Errorf("ML service export request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		c.recordFailure()
-		body, _ := io.ReadAll(resp.Body)
-		return nil, "", fmt.Errorf("ML service export returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.recordFailure()
-		return nil, "", fmt.Errorf("failed to read ML export response: %w", err)
-	}
-
-	c.recordSuccess()
-	return content, resp.Header.Get("Content-Disposition"), nil
-}
-
-=======
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 // NewClient creates an ML service client with circuit breaker.
 func NewClient(baseURL string, timeoutSec int) *Client {
 	return &Client{
@@ -131,16 +95,46 @@ func (c *Client) recordFailure() {
 	}
 }
 
+// DownloadPredictionsExcel fetches prediction export from ML service.
+func (c *Client) DownloadPredictionsExcel(model string, days int) ([]byte, string, error) {
+	if !c.isAvailable() {
+		return nil, "", fmt.Errorf("ML service unavailable (circuit breaker open)")
+	}
+
+	u := fmt.Sprintf("%s/predict/export?model=%s&days=%d", c.baseURL, url.QueryEscape(model), days)
+	resp, err := c.httpClient.Get(u)
+	if err != nil {
+		c.recordFailure()
+		return nil, "", fmt.Errorf("ML service export request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.recordFailure()
+		body, _ := io.ReadAll(resp.Body)
+		return nil, "", fmt.Errorf("ML service export returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.recordFailure()
+		return nil, "", fmt.Errorf("failed to read ML export response: %w", err)
+	}
+
+	c.recordSuccess()
+	return content, resp.Header.Get("Content-Disposition"), nil
+}
+
 // GetPredictions fetches price predictions from the ML service.
 func (c *Client) GetPredictions(model string, days int) (*models.PredictionResponse, error) {
 	if !c.isAvailable() {
 		return nil, fmt.Errorf("ML service unavailable (circuit breaker open)")
 	}
 
-	url := fmt.Sprintf("%s/predict?model=%s&days=%d", c.baseURL, model, days)
+	u := fmt.Sprintf("%s/predict?model=%s&days=%d", c.baseURL, model, days)
 	log.Printf("[MLClient] Fetching predictions: model=%s, days=%d", model, days)
 
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.httpClient.Get(u)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("ML service request failed: %w", err)
@@ -164,35 +158,21 @@ func (c *Client) GetPredictions(model string, days int) (*models.PredictionRespo
 }
 
 // GetPredictionsWithData sends fresh OHLC data to the ML service for predictions.
-<<<<<<< HEAD
 // If forceRetrain is true, the ML service refits on this payload (used for POST /api/retrain).
 func (c *Client) GetPredictionsWithData(model string, days int, candles []models.CandleData, forceRetrain bool) (*models.PredictionResponse, error) {
-=======
-func (c *Client) GetPredictionsWithData(model string, days int, candles []models.CandleData) (*models.PredictionResponse, error) {
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	if !c.isAvailable() {
 		return nil, fmt.Errorf("ML service unavailable (circuit breaker open)")
 	}
 
-	url := fmt.Sprintf("%s/predict_with_data", c.baseURL)
-<<<<<<< HEAD
+	u := fmt.Sprintf("%s/predict_with_data", c.baseURL)
 	log.Printf("[MLClient] Fetching predictions with data: model=%s, days=%d, candles=%d, forceRetrain=%v", model, days, len(candles), forceRetrain)
 
 	// Build request payload
 	requestData := map[string]interface{}{
-		"model":          model,
-		"days":           days,
-		"data":           candles,
+		"model":         model,
+		"days":          days,
+		"data":          candles,
 		"force_retrain": forceRetrain,
-=======
-	log.Printf("[MLClient] Fetching predictions with data: model=%s, days=%d, candles=%d", model, days, len(candles))
-
-	// Build request payload
-	requestData := map[string]interface{}{
-		"model": model,
-		"days": days,
-		"data": candles,
->>>>>>> 3bba824c0d1d9f1b3d9d9f10848532f480acc103
 	}
 
 	payload, err := json.Marshal(requestData)
@@ -200,7 +180,7 @@ func (c *Client) GetPredictionsWithData(model string, days int, candles []models
 		return nil, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(payload))
+	req, err := http.NewRequest(http.MethodPost, u, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prediction request: %w", err)
 	}
@@ -235,10 +215,10 @@ func (c *Client) Retrain(model string) (*models.RetrainResponse, error) {
 		return nil, fmt.Errorf("ML service unavailable (circuit breaker open)")
 	}
 
-	url := fmt.Sprintf("%s/retrain?model=%s", c.baseURL, model)
+	u := fmt.Sprintf("%s/retrain?model=%s", c.baseURL, model)
 	log.Printf("[MLClient] Triggering retrain: model=%s", model)
 
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	req, err := http.NewRequest(http.MethodPost, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build retrain request: %w", err)
 	}
@@ -268,9 +248,9 @@ func (c *Client) Retrain(model string) (*models.RetrainResponse, error) {
 
 // Health checks if the ML service is healthy.
 func (c *Client) Health() (*models.HealthResponse, error) {
-	url := fmt.Sprintf("%s/health", c.baseURL)
+	u := fmt.Sprintf("%s/health", c.baseURL)
 
-	resp, err := c.httpClient.Get(url)
+	resp, err := c.httpClient.Get(u)
 	if err != nil {
 		return nil, fmt.Errorf("ML service health check failed: %w", err)
 	}
