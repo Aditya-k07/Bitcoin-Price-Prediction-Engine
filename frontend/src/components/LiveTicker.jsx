@@ -45,7 +45,7 @@ export default function LiveTicker({ currency = 'usd' }) {
       unsubMsg();
       unsubStatus();
     };
-  }, []);
+  }, [currency]);
 
   const formatPrice = (p) => {
     if (p == null) return '—';

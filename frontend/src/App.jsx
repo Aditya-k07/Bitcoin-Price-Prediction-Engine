@@ -148,6 +148,20 @@ export default function App() {
         const currPrefix = currency === 'usd' ? '$' : '₹';
         showToast(`${model} model retrained! New RMSE: ${currPrefix}${result.rmse.toFixed(2)}`);
 
+        // Immediate state update for metrics UI
+        setPredictionMeta({
+          model: result.model,
+          rmse: result.rmse,
+          mae: result.mae,
+          r2_score: result.r2_score,
+          mape: result.mape,
+          f1_score: result.f1_score,
+          accuracy: result.accuracy,
+          directional_accuracy: result.directional_accuracy,
+          trainedAt: result.trained_at,
+          architecture_details: result.architecture_details,
+        });
+
         // Refresh predictions with new model
         await loadPredictions(model, predictionDays, currency);
       } catch (err) {

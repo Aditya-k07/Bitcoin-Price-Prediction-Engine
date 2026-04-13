@@ -34,7 +34,7 @@ export default function ModelMetricsTab({ predictionMeta, currency, isLoading })
     <div className="model-metrics-container">
       <div className="metrics-header">
         <h2 className="metrics-title">
-          {model === 'xgboost' ? '⚡ XGBoost Regressor' : '🧠 Hybrid LSTM + XGBoost'}
+          {model === 'xgboost' ? '⚡ XGBoost Regressor' : '📊 Ridge Regressor'}
         </h2>
         <span className="metrics-timestamp">Last trained: {new Date(trainedAt).toLocaleString()}</span>
       </div>
@@ -44,7 +44,7 @@ export default function ModelMetricsTab({ predictionMeta, currency, isLoading })
         <div className="metric-box box-primary">
           <span className="metric-box-label">RMSE (Root Mean Squared Error)</span>
           <span className="metric-box-value">
-            {currencySymbol}{rmse?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currencySymbol}{rmse?.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
           </span>
         </div>
 

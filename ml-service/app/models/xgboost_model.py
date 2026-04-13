@@ -108,6 +108,8 @@ class XGBoostPredictor:
             "reg_alpha": 0.5,
             "reg_lambda": 1.0,
             "random_state": None,
+            "verbosity": 0,
+            "tree_method": "auto",
         }
 
         # --- Median model (point estimate) ---
