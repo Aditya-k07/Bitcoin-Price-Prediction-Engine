@@ -105,6 +105,7 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 		return
 	}
 
+
 	currency := c.DefaultQuery("currency", "usd")
 	if currency != "usd" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{
@@ -114,26 +115,24 @@ func (h *Handler) GetHistorical(c *gin.Context) {
 		return
 	}
 
-	// Fetch historical data from CoinGecko
-	daysInQuery := c.DefaultQuery("days", "90")
-	// For historical view, we allow "max" or any positive integer string.
-	// We'll pass it directly to GetOHLC which now handles strings.
+	// Fetch historical data from CoinGecko/Binance logic inside GetOHLC
 	candles, err := h.CoinGecko.GetOHLC(daysInQuery, currency)
 	if err != nil {
-		log.Printf("[Handler] CoinGecko OHLC error: %v", err)
+		log.Printf("[Handler] GetOHLC error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error:   "upstream_error",
-			Message: "Failed to fetch historical data from CoinGecko",
+			Message: "Failed to fetch historical data",
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, models.HistoricalResponse{
 		Data:   candles,
-		Source: "coingecko",
+		Source: "market_api",
 		Cached: false,
 	})
 }
+
 
 // GetPredictions proxies prediction requests to the ML service with fresh CoinGecko data.
 // Fetches 1 year of historical OHLC data from CoinGecko and sends it with the prediction request.
@@ -231,58 +230,29 @@ func (h *Handler) PostRetrain(c *gin.Context) {
 		return
 	}
 
-	currency := c.DefaultQuery("currency", "usd")
-	if currency != "usd" {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error:   "invalid_parameter",
-			Message: "currency must be 'usd'",
-		})
-		return
-	}
-
-	// Retrain/refresh model on latest market data from CoinGecko.
-	candles, err := h.CoinGecko.GetOHLC("365", currency)
-	if err != nil {
-		log.Printf("[Handler] CoinGecko OHLC error (retrain): %v", err)
-		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
-			Error:   "upstream_error",
-			Message: "Failed to fetch historical data from CoinGecko",
-		})
-		return
-	}
-
-	prediction, err := h.MLClient.GetPredictionsWithData(model, 30, candles, true)
+	log.Printf("[Handler] Triggering full retraining for model: %s", model)
+	
+	// Call dedicated ML retrain endpoint (triggers full Binance sync in Python)
+	result, err := h.MLClient.Retrain(model)
 	if err != nil {
 		log.Printf("[Handler] ML retrain error: %v", err)
 		c.JSON(http.StatusServiceUnavailable, models.ErrorResponse{
 			Error:   "ml_service_error",
-			Message: "Failed to retrain model. The ML service may be unavailable.",
+			Message: "Failed to trigger retraining on ML service.",
 		})
 		return
 	}
 
-	// Invalidate cache for this model so future requests use fresh model state.
+	// Invalidate cache for this model
 	if h.Cache != nil {
 		if err := h.Cache.InvalidateModel(c.Request.Context(), model); err != nil {
-			log.Printf("[Handler] Cache invalidation error (non-fatal): %v", err)
+			log.Printf("[Handler] Cache invalidation warning: %v", err)
 		}
 	}
 
-	result := &models.RetrainResponse{
-		Model:               model,
-		RMSE:                prediction.RMSE,
-		MAE:                 prediction.MAE,
-		R2Score:             prediction.R2Score,
-		MAPE:                prediction.MAPE,
-		F1Score:             prediction.F1Score,
-		Accuracy:            prediction.Accuracy,
-		DirectionalAccuracy: prediction.DirectionalAccuracy,
-		TrainedAt:           prediction.TrainedAt,
-		Message:             "Model refreshed using latest CoinGecko data",
-		ArchitectureDetails: prediction.ArchitectureDetails,
-	}
 	c.JSON(http.StatusOK, result)
 }
+
 
 // HealthCheck returns the backend's health status plus ML service connectivity.
 //

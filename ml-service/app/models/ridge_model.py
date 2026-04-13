@@ -238,26 +238,48 @@ class RidgePredictor:
             current_scaled = self.scaler.transform(current_features)
             raw = float(self.model.predict(current_scaled)[0])
 
-            price = float(np.exp(np.clip(raw, -30.0, 40.0))) if self.log_target else raw
-            
-            # Enforce logical constraints: lower <= price <= upper, and all >= 0
-            price = max(price, 0.0)
+            # Stabilization: Clip raw prediction in log-space if log_target is True
+            if self.log_target:
+                raw_clipped = np.clip(raw, 0.0, 15.0)
+                price = float(np.exp(raw_clipped))
+            else:
+                price = raw
+
+            # Mean Reversion Damping:
+            # Recursive forecasts often drift too far. We pull the price back 
+            # toward the starting price more aggressively as we go further out.
+            start_price = float(close_history[len(df) - 1])
+            damping = min(0.7, 0.01 * i) # Up to 70% damping at day 70
+            price = price * (1 - damping) + start_price * damping
+
+            # Enforce tighter daily drift limit (max 2% move from previous day)
+            # This follows professional risk-parity constraints for stable predictions.
+            if close_history:
+                prev_price = close_history[-1]
+                max_price = prev_price * 1.02
+                min_price = prev_price * 0.98
+                price = np.clip(price, min_price, max_price)
+
+            # Enforce absolute logical constraints: price >= 0
+            price = max(float(price), 0.0)
             lower = max(price - margin, 0.0)
             upper = max(price + margin, price)
+
 
 
             predictions.append(
                 {
                     "date": pred_date.strftime("%Y-%m-%d"),
-                    "price": round(price, 2),
-                    "lower": round(lower, 2),
-                    "upper": round(upper, 2),
+                    "price": round(float(price), 2),
+                    "lower": round(float(lower), 2),
+                    "upper": round(float(upper), 2),
                 }
             )
 
             close_history.append(price)
 
         return predictions
+
 
     # ------------------------------------------------------------------
     # Feature helpers

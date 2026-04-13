@@ -116,44 +116,53 @@ def fetch_full_history_binance(symbol: str = "BTCUSDT", years: int = 4) -> pd.Da
     combined = combined[~combined.index.duplicated(keep='last')].sort_index()
     return combined
 
-def load_daily_data(csv_path: str = None) -> pd.DataFrame:
+def load_daily_data(csv_path: str = None, force_sync: bool = False) -> pd.DataFrame:
     """
-    Load historical data using Binance API with local caching.
+    Load historical data using Binance API with local caching and backfilling.
     """
     os.makedirs(DATA_DIR, exist_ok=True)
+    target_years = 5
     
     df_cached = pd.DataFrame()
     if os.path.exists(CACHE_PATH):
         try:
             df_cached = pd.read_csv(CACHE_PATH, index_col=0, parse_dates=True)
             logger.info(f"Loaded {len(df_cached)} rows from cache ({CACHE_PATH})")
-
         except Exception as e:
             logger.warning(f"Could not load cache: {e}")
 
-    # Determine how much "fresh" data we need
+    # 1. Backfill missing history
+    desired_start = datetime.utcnow() - pd.Timedelta(days=365 * target_years)
+    if df_cached.empty or df_cached.index.min() > desired_start:
+        logger.info(f"Backfilling {target_years} years of history...")
+        df_full = fetch_full_history_binance(years=target_years)
+        if not df_full.empty:
+            df_cached = pd.concat([df_cached, df_full])
+            df_cached = df_cached[~df_cached.index.duplicated(keep='last')].sort_index()
+
+    # 2. Delta update for newest data
     if not df_cached.empty:
         last_ts = int(df_cached.index[-1].timestamp() * 1000)
-        # Add 1 day buffer
-        fresh_start = last_ts + (24 * 60 * 60 * 1000)
-    else:
-        logger.info("No cache found, fetching full history...")
-        # Start fetch from approx 4 years ago for deep context
-        df_cached = fetch_full_history_binance(years=4)
-        fresh_start = None
-
-    if fresh_start and fresh_start < int(time.time() * 1000):
-        df_fresh = fetch_full_history_binance(years=1) # Just check last year for updates
-        if not df_fresh.empty:
-            df_cached = pd.concat([df_cached, df_fresh])
-            df_cached = df_cached[~df_cached.index.duplicated(keep='last')].sort_index()
+        # Fetch delta if forced OR if last point is > 5 minutes old
+        # When force_sync=True, we bypass the safety check and pull live data
+        if force_sync or last_ts < int((time.time() - 300) * 1000):
+            logger.info(f"Syncing newest data (force_sync={force_sync})...")
+            # Pull 1h data for the last few hours to ensure the daily candle is updated with live price
+            df_fresh = fetch_binance_ohlcv(start_time=last_ts)
+            if not df_fresh.empty:
+                df_cached = pd.concat([df_cached, df_fresh])
+                # Ensure we drop duplicates and keep the newest (live) data
+                df_cached = df_cached[~df_cached.index.duplicated(keep='last')].sort_index()
 
     # Save to cache
     if not df_cached.empty:
         df_cached.to_csv(CACHE_PATH)
-        logger.info(f"Updated cache with {len(df_cached)} total records.")
+        logger.info(f"Cache synchronized. Total records: {len(df_cached)}")
         
     return df_cached
+
+
+
 
 def resample_to_daily(df: pd.DataFrame) -> pd.DataFrame:
     """

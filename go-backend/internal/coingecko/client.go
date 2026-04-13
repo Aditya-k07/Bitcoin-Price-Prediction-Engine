@@ -108,28 +108,82 @@ func (c *Client) GetOHLC(days string, currency string) ([]models.CandleData, err
 }
 
 func (c *Client) getOHLCFromBinance(days string, currency string) ([]models.CandleData, error) {
-	// Binance only supports USDT pairs for public klines easily
 	symbol := "BTCUSDT"
 	interval := "1d"
 	limit := 1000
 
-	// If days is "max", we'll just take the last 1000 daily candles for the chart view
-	// which covers ~3 years. ML service handles deeper history via pagination.
-	url := fmt.Sprintf("https://api.binance.com/api/v3/klines?symbol=%s&interval=%s&limit=%d", symbol, interval, limit)
+	var allCandles []models.CandleData
+	// We'll fetch 3 chunks of 1000 daily candles (~8 years) to cover "All Time"
+	// Binance has data for BTCUSDT since 2017.
 	
+	now := time.Now().UnixMilli()
+	// Chunk 1: most recent
+	allCandles, err := c.fetchBinanceChunk(symbol, interval, limit, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if days == "max" && len(allCandles) > 0 {
+		// Chunk 2: before chunk 1
+		startTime := allCandles[0].Timestamp - (int64(limit) * 24 * 60 * 60 * 1000)
+		chunk2, err := c.fetchBinanceChunk(symbol, interval, limit, startTime)
+		if err == nil && len(chunk2) > 0 {
+			// Prepend chunk2 to allCandles
+			allCandles = append(chunk2, allCandles...)
+		}
+		
+		// Chunk 3: even earlier (approx 2017/2018)
+		if len(chunk2) > 0 {
+			startTime = chunk2[0].Timestamp - (int64(limit) * 24 * 60 * 60 * 1000)
+			chunk3, err := c.fetchBinanceChunk(symbol, interval, limit, startTime)
+			if err == nil && len(chunk3) > 0 {
+				allCandles = append(chunk3, allCandles...)
+			}
+		}
+	}
+
+	// De-duplicate and sort just in case
+	unique := make(map[int64]models.CandleData)
+	for _, c := range allCandles {
+		unique[c.Timestamp] = c
+	}
+	
+	sorted := make([]models.CandleData, 0, len(unique))
+	for _, c := range unique {
+		sorted = append(sorted, c)
+	}
+	// Sort by timestamp
+	for i := 0; i < len(sorted); i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[i].Timestamp > sorted[j].Timestamp {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	log.Printf("[Binance] Total history compiled: %d candles", len(sorted))
+	return sorted, nil
+}
+
+func (c *Client) fetchBinanceChunk(symbol, interval string, limit int, startTime int64) ([]models.CandleData, error) {
+	url := fmt.Sprintf("https://api.binance.com/api/v3/klines?symbol=%s&interval=%s&limit=%d", symbol, interval, limit)
+	if startTime > 0 {
+		url = fmt.Sprintf("%s&startTime=%d", url, startTime)
+	}
+
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("binance klines request failed: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("binance returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("binance status %d", resp.StatusCode)
 	}
 
 	var rawData [][]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&rawData); err != nil {
-		return nil, fmt.Errorf("failed to parse binance response: %w", err)
+		return nil, err
 	}
 
 	candles := make([]models.CandleData, 0, len(rawData))
@@ -137,23 +191,14 @@ func (c *Client) getOHLCFromBinance(days string, currency string) ([]models.Cand
 		if len(row) < 6 {
 			continue
 		}
-		
-		// Binance returns strings for prices, need to parse
-		open := parsePrice(row[1])
-		high := parsePrice(row[2])
-		low := parsePrice(row[3])
-		close := parsePrice(row[4])
-		
 		candles = append(candles, models.CandleData{
 			Timestamp: int64(row[0].(float64)),
-			Open:      open,
-			High:      high,
-			Low:       low,
-			Close:     close,
+			Open:      parsePrice(row[1]),
+			High:      parsePrice(row[2]),
+			Low:       parsePrice(row[3]),
+			Close:     parsePrice(row[4]),
 		})
 	}
-
-	log.Printf("[Binance] Received %d candles", len(candles))
 	return candles, nil
 }
 
@@ -166,6 +211,7 @@ func parsePrice(v interface{}) float64 {
 	fmt.Sscanf(s, "%f", &f)
 	return f
 }
+
 
 
 func cacheKey(days string, currency string) string {

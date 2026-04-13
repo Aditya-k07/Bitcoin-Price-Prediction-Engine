@@ -255,8 +255,8 @@ export default function App() {
             <option value={90}>3 months</option>
             <option value={180}>6 months</option>
             <option value={365}>1 year</option>
-            <option value="max">All time</option>
           </select>
+
         </div>
 
         <div className="days-selector">

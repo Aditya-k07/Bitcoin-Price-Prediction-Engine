@@ -312,9 +312,11 @@ async def retrain(
     logger.info(f"Retraining {model} model...")
     with _data_lock:
         try:
-            _daily_data = load_daily_data()
+            # force_sync=True ensures we pull latest candles from Binance immediately
+            _daily_data = load_daily_data(force_sync=True)
             _featured_data = engineer_features(_daily_data)
             logger.info(f"Retraining started with {len(_daily_data)} days of historical context.")
+
         except Exception as e:
             logger.error(f"Failed to reload data for retraining: {e}")
             raise HTTPException(status_code=500, detail=f"Data reload failed: {str(e)}")
