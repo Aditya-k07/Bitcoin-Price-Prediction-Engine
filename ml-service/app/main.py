@@ -23,7 +23,7 @@ import pandas as pd
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from app.data_loader import load_daily_data, load_from_coingecko_ohlc, fetch_coingecko_ohlc
+from app.data_loader import load_daily_data, load_from_coingecko_ohlc
 from app.features import engineer_features, get_feature_columns
 from app.models.xgboost_model import XGBoostPredictor
 from app.models.ridge_model import RidgePredictor
@@ -49,14 +49,15 @@ _data_lock = threading.Lock()
 
 
 def _load_data():
-    """Load and cache the dataset."""
+    """Load and cache the dataset using API-based logic."""
     global _daily_data, _featured_data
     with _data_lock:
         if _daily_data is None:
-            csv_path = os.environ.get("BTC_DATA_PATH", None)
-            _daily_data = load_daily_data(csv_path)
+            # load_daily_data now handles API fetching and caching internally
+            _daily_data = load_daily_data()
             _featured_data = engineer_features(_daily_data)
     return _daily_data, _featured_data
+
 
 
 def _get_data():
@@ -205,23 +206,17 @@ async def predict_with_data(request: HistoricalDataRequest):
     Generate predictions using fresh OHLC data from the Go backend.
 
     This endpoint accepts OHLC candlestick data (from CoinGecko via Go backend),
-    trains/uses a model, and returns predictions with confidence intervals.
-
-    - **model**: 'xgboost' (accurate) or 'ridge' (fast)
-    - **days**: Number of future days to predict (1-365)
-    - **data**: List of OHLC candles with timestamp, open, high, low, close
-
-    Returns predicted prices with 95% confidence bounds.
+    merges it with historical context, and returns predictions.
     """
     if request.model not in ["xgboost", "ridge"]:
         raise HTTPException(status_code=400, detail=f"Unknown model: {request.model}")
 
     logger.info(f"[/predict_with_data] Received {len(request.data)} candles, predicting {request.days} days")
 
-    global _latest_featured_data, _latest_signature
+    global _latest_featured_data, _latest_signature, _daily_data
 
     try:
-        # Convert received OHLC data to DataFrame
+        # 1. Convert received OHLC data to DataFrame
         candle_dicts = [
             {
                 "timestamp": c.timestamp,
@@ -232,9 +227,18 @@ async def predict_with_data(request: HistoricalDataRequest):
             }
             for c in request.data
         ]
-        daily_data = load_from_coingecko_ohlc(candle_dicts)
-        featured_data = engineer_features(daily_data)
+        fresh_daily = load_from_coingecko_ohlc(candle_dicts)
+        
+        # 2. Merge with existing historical daily data to provide context
+        # This ensures features like SMA(30) or RSI(14) are computed correctly
+        base_daily, _ = _get_data()
+        combined_daily = pd.concat([base_daily, fresh_daily])
+        combined_daily = combined_daily[~combined_daily.index.duplicated(keep='last')].sort_index()
+        
+        # 3. Engineer features on the COMBINED dataset
+        featured_data = engineer_features(combined_daily)
         _latest_featured_data = featured_data.copy()
+        
         latest_ts = int(candle_dicts[-1]["timestamp"]) if candle_dicts else 0
         data_signature = (request.model, len(candle_dicts), latest_ts)
 
@@ -242,36 +246,24 @@ async def predict_with_data(request: HistoricalDataRequest):
         logger.error(f"Failed to process OHLC data: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to process data: {str(e)}")
 
-    if request.model == "xgboost":
-        predictor = xgboost_predictor
-        feature_cols = get_feature_columns(featured_data)
-        # Retrain when cold, CoinGecko slice changed, or caller explicitly retrains.
-        if (
-            request.force_retrain
-            or (not predictor.is_trained)
-            or (_latest_signature != data_signature)
-        ):
-            logger.info("Training XGBoost on provided data...")
-            predictor.train(featured_data, feature_cols)
-            _latest_signature = data_signature
+    predictor = xgboost_predictor if request.model == "xgboost" else ridge_predictor
+    feature_cols = get_feature_columns(featured_data)
 
-        predictions = predictor.predict(featured_data, days=request.days)
-        metrics = predictor.metrics
+    # 4. Use or Train the model
+    # We only retrain if forced OR if the model doesn't exist.
+    # We avoid retraining on EVERY slice to maintain long-term context.
+    if request.force_retrain or not predictor.is_trained:
+        logger.info(f"Training {request.model} on combined historical + fresh data...")
+        predictor.train(featured_data, feature_cols)
+        _latest_signature = data_signature
+    elif _latest_signature != data_signature:
+        logger.info(f"Using existing {request.model} model with fresh context.")
+        _latest_signature = data_signature
 
-    elif request.model == "ridge":
-        predictor = ridge_predictor
-        feature_cols = get_feature_columns(featured_data)
-        if (
-            request.force_retrain
-            or (not predictor.is_trained)
-            or (_latest_signature != data_signature)
-        ):
-            logger.info("Training Ridge on provided data...")
-            predictor.train(featured_data, feature_cols)
-            _latest_signature = data_signature
+    # 5. Generate predictions
+    predictions = predictor.predict(featured_data, days=request.days)
+    metrics = predictor.metrics
 
-        predictions = predictor.predict(featured_data, days=request.days)
-        metrics = predictor.metrics
 
     logger.info(f"Raw predictions from model: {predictions[:2] if len(predictions) > 0 else 'EMPTY'}")
 
@@ -311,34 +303,21 @@ async def retrain(
     """
     Retrain a model and return updated metrics.
 
-    This endpoint reloads the data, re-engineers features, and retrains
-    the specified model from scratch. Useful when new data is available
-    or when you want to refresh the model.
+    This endpoint reloads the data from the API (with local caching),
+    re-engineers features, and retrains the specified model from scratch.
     """
     global _daily_data, _featured_data
 
-    # Force reload data
+    # Force reload data - load_daily_data now handles Binance fetch + caching internally
     logger.info(f"Retraining {model} model...")
     with _data_lock:
-        csv_path = os.environ.get("BTC_DATA_PATH", None)
-        base_data = load_daily_data(csv_path)
-        
-        # Try to supplement with live data from CoinGecko
         try:
-            fresh_data = fetch_coingecko_ohlc(days=30)
-            if not fresh_data.empty:
-                # Combine base data (CSV) with fresh data, removing duplicates (favor fresh)
-                # Ensure fresh_data is appended and we keep the latest values for overlapping dates
-                _daily_data = pd.concat([base_data, fresh_data])
-                _daily_data = _daily_data[~_daily_data.index.duplicated(keep='last')].sort_index()
-                logger.info(f"Combined historical CSV with {len(fresh_data)} days of fresh CoinGecko data.")
-            else:
-                _daily_data = base_data
+            _daily_data = load_daily_data()
+            _featured_data = engineer_features(_daily_data)
+            logger.info(f"Retraining started with {len(_daily_data)} days of historical context.")
         except Exception as e:
-            logger.warning(f"Could not fetch fresh data for retraining, using CSV data only: {e}")
-            _daily_data = base_data
-            
-        _featured_data = engineer_features(_daily_data)
+            logger.error(f"Failed to reload data for retraining: {e}")
+            raise HTTPException(status_code=500, detail=f"Data reload failed: {str(e)}")
 
     if model == "xgboost":
         feature_cols = get_feature_columns(_featured_data)
@@ -348,6 +327,7 @@ async def retrain(
         metrics = ridge_predictor.train(_featured_data, feature_cols)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
+
 
     return RetrainResponse(
         model=model,

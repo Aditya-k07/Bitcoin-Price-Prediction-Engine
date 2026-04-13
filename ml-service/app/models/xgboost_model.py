@@ -223,9 +223,11 @@ class XGBoostPredictor:
             lower = float(self.model_lower.predict(current_features)[0])
             upper = float(self.model_upper.predict(current_features)[0])
 
-            # Enforce logical constraints: lower <= price <= upper
-            lower = min(lower, price)
+            # Enforce logical constraints: lower <= price <= upper, and all >= 0
+            price = max(price, 0.0)
+            lower = max(min(lower, price), 0.0)
             upper = max(upper, price)
+
 
             predictions.append(
                 {

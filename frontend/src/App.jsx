@@ -2,9 +2,9 @@
  * App.jsx — Main CoinSight application.
  *
  * Orchestrates:
- * - Historical data fetching from CoinGecko API (free tier limited to ~24 days of OHLC)
- * - Prediction data fetching from ML service (via nginx proxy)
- * - Model switching (XGBoost / LSTM+XGBoost)
+ * - Historical data fetching from CoinGecko API
+ * - Prediction data fetching from ML service (via Go backend)
+ * - Model switching (XGBoost / Ridge)
  * - Retrain triggering
  * - Live ticker via WebSocket
  * - Combined chart rendering
@@ -25,7 +25,8 @@ export default function App() {
   const [predictions, setPredictions] = useState([]);
   const [predictionMeta, setPredictionMeta] = useState(null);
   const [activeModel, setActiveModel] = useState('xgboost');
-  const [historicalDays, setHistoricalDays] = useState(30); // CoinGecko free tier: ~24 days max OHLC
+  const [historicalDays, setHistoricalDays] = useState(90); // Default to 90 days for better context
+
   const [predictionDays, setPredictionDays] = useState(30);
   const [currency, setCurrency] = useState('usd');
   const [activeTab, setActiveTab] = useState('chart'); // 'chart' or 'metrics'

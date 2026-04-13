@@ -39,7 +39,6 @@ try:
     if resp.status_code == 200:
         data = resp.json()
         predictions = data['predictions']
-        metrics = data['metrics']
         
         print(f"   ✅ Predictions called successfully")
         print(f"   Predictions generated: {len(predictions)} days")
@@ -52,12 +51,13 @@ try:
             print(f"      Low: ${pred['low']:.2f}")
         
         print(f"   Model metrics:")
-        print(f"      RMSE: ${metrics['rmse']:.2f}")
-        print(f"      MAE: ${metrics['mae']:.2f}")
-        print(f"      R² Score: {metrics['r2']:.4f}")
-        print(f"      F1 Score: {metrics['f1']:.2f}%")
+        print(f"      RMSE: ${data.get('rmse', 0):.2f}")
+        print(f"      MAE: ${data.get('mae', 0):.2f}")
+        print(f"      R² Score: {data.get('r2_score', 0):.4f}")
+        print(f"      F1 Score: {data.get('f1_score', 0):.2f}%")
     else:
         print(f"   ❌ Predictions failed: HTTP {resp.status_code}")
+
         sys.exit(1)
 except Exception as e:
     print(f"   ❌ Predictions error: {e}")
@@ -71,7 +71,8 @@ try:
         data = resp.json()
         print(f"   ✅ Model retraining successful")
         print(f"   Model: {data['model']}")
-        print(f"   Status: {data['status']}")
+        print(f"   Message: {data['message']}")
+
     else:
         print(f"   ❌ Retrain failed: HTTP {resp.status_code}")
 except Exception as e:

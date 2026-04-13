@@ -14,120 +14,146 @@ import time
 
 logger = logging.getLogger(__name__)
 
-# Path to the dataset relative to the ml-service directory
+# Path to the data directory within the ml-service package
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-DEFAULT_CSV_PATH = os.path.join(DATA_DIR, "btc_historical.csv")
+
+# Cache for historical data to avoid hitting rate limits
+CACHE_PATH = os.path.join(DATA_DIR, "api_historical_cache.csv")
 
 
-def fetch_coingecko_ohlc(days: int = 30, currency: str = "usd") -> pd.DataFrame:
+def fetch_binance_ohlcv(symbol: str = "BTCUSDT", interval: str = "1d", limit: int = 1000, start_time: int = None) -> pd.DataFrame:
     """
-    Fetch the latest OHLC data from CoinGecko public API.
+    Fetch OHLCV data from Binance Public API.
     
-    CoinGecko free tier /coins/bitcoin/ohlc endpoint returns:
+    Binance returns:
     [
-      [timestamp, open, high, low, close],
-      ...
+      [
+        1499040000000,      // Open time
+        "0.01634790",       // Open
+        "0.80000000",       // High
+        "0.01575800",       // Low
+        "0.01577100",       // Close
+        "148976.11427815",  // Volume
+        1499644799999,      // Close time
+        "2434.19055334",    // Quote asset volume
+        308,                // Number of trades
+        "1756.87402397",    // Taker buy base asset volume
+        "28.46694368",      // Taker buy quote asset volume
+        "17928899.62484339" // Ignore
+      ]
     ]
-    Intervals: 1/7/14/30 days = 30 min intervals; 90+ days = 4 hour intervals.
     """
-    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/ohlc"
+    url = "https://api.binance.com/api/v3/klines"
     params = {
-        "vs_currency": currency,
-        "days": days
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
     }
+    if start_time:
+        params["startTime"] = start_time
     
-    logger.info(f"Fetching latest {days} days of BTC/{currency} from CoinGecko...")
+    logger.info(f"Fetching Binance {interval} data for {symbol} (start_time={start_time})...")
+    
     try:
         response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
         
         if not data:
-            raise ValueError("Empty data returned from CoinGecko")
+            return pd.DataFrame()
             
-        # Convert to DataFrame
-        df = pd.DataFrame(data, columns=["timestamp", "Open", "High", "Low", "Close"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df.set_index("timestamp", inplace=True)
+        columns = [
+            "timestamp", "Open", "High", "Low", "Close", "Volume", 
+            "close_time", "quote_volume", "count", "taker_buy_base", "taker_buy_quote", "ignore"
+        ]
+        df = pd.DataFrame(data, columns=columns)
         
-        # Resample to daily to match our model's expectation
-        daily = resample_to_daily(df)
-        logger.info(f"Successfully fetched and processed {len(daily)} days of fresh data from CoinGecko.")
-        return daily
+        # Convert types
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            df[col] = df[col].astype(float)
+            
+        df.set_index("timestamp", inplace=True)
+        return df[["Open", "High", "Low", "Close", "Volume"]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch data from CoinGecko: {e}")
+        logger.error(f"Failed to fetch from Binance: {e}")
         return pd.DataFrame()
 
-
-def load_raw_data(csv_path: str = None) -> pd.DataFrame:
+def fetch_full_history_binance(symbol: str = "BTCUSDT", years: int = 4) -> pd.DataFrame:
     """
-    Load the raw Bitcoin historical CSV from Kaggle.
-
-    The Kaggle dataset (mczielinski/bitcoin-historical-data) has columns:
-    - Timestamp (Unix timestamp)
-    - Open, High, Low, Close (prices in USD)
-    - Volume_(BTC), Volume_(Currency)
-    - Weighted_Price
-
-    Args:
-        csv_path: Path to the CSV file. Defaults to data/btc_historical.csv.
-
-    Returns:
-        DataFrame with parsed datetime index and OHLCV columns.
+    Fetch long-term history from Binance using pagination.
     """
-    path = csv_path or DEFAULT_CSV_PATH
+    limit = 1000
+    all_dfs = []
+    
+    # Approx start time (e.g. 4 years ago)
+    current_ts = int(time.time() * 1000)
+    start_ts = current_ts - (years * 365 * 24 * 60 * 60 * 1000)
+    
+    while True:
+        df = fetch_binance_ohlcv(symbol=symbol, start_time=start_ts, limit=limit)
+        if df.empty:
+            break
+            
+        all_dfs.append(df)
+        
+        # Next start time is the last timestamp + 1 interval (1 day)
+        last_ts = int(df.index[-1].timestamp() * 1000)
+        if last_ts >= current_ts - (24 * 60 * 60 * 1000): # Stop if we reached today
+            break
+            
+        if start_ts == last_ts + (24 * 60 * 60 * 1000): # Prevent infinite loop
+            break
+            
+        start_ts = last_ts + (24 * 60 * 60 * 1000)
+        time.sleep(0.1) # Respect rate limits
+        
+    if not all_dfs:
+        return pd.DataFrame()
+        
+    combined = pd.concat(all_dfs)
+    combined = combined[~combined.index.duplicated(keep='last')].sort_index()
+    return combined
 
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Dataset not found at {path}. "
-            "Please download it from: "
-            "https://www.kaggle.com/datasets/mczielinski/bitcoin-historical-data/data "
-            "and place it in the ml-service/data/ directory."
-        )
+def load_daily_data(csv_path: str = None) -> pd.DataFrame:
+    """
+    Load historical data using Binance API with local caching.
+    """
+    os.makedirs(DATA_DIR, exist_ok=True)
+    
+    df_cached = pd.DataFrame()
+    if os.path.exists(CACHE_PATH):
+        try:
+            df_cached = pd.read_csv(CACHE_PATH, index_col=0, parse_dates=True)
+            logger.info(f"Loaded {len(df_cached)} rows from cache ({CACHE_PATH})")
 
-    logger.info(f"Loading raw data from {path}...")
+        except Exception as e:
+            logger.warning(f"Could not load cache: {e}")
 
-    df = pd.read_csv(path)
-
-    # The Kaggle dataset uses 'Timestamp' as Unix timestamp
-    if "Timestamp" in df.columns:
-        df["Timestamp"] = pd.to_datetime(df["Timestamp"], unit="s")
-        df.set_index("Timestamp", inplace=True)
-    elif "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
-        df.set_index("timestamp", inplace=True)
+    # Determine how much "fresh" data we need
+    if not df_cached.empty:
+        last_ts = int(df_cached.index[-1].timestamp() * 1000)
+        # Add 1 day buffer
+        fresh_start = last_ts + (24 * 60 * 60 * 1000)
     else:
-        # Try to parse the first column as datetime
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0])
-        df.set_index(df.columns[0], inplace=True)
+        logger.info("No cache found, fetching full history...")
+        # Start fetch from approx 4 years ago for deep context
+        df_cached = fetch_full_history_binance(years=4)
+        fresh_start = None
 
-    # Standardize column names
-    col_mapping = {}
-    for col in df.columns:
-        lower = col.lower().replace(" ", "_")
-        if "open" in lower:
-            col_mapping[col] = "Open"
-        elif "high" in lower:
-            col_mapping[col] = "High"
-        elif "low" in lower:
-            col_mapping[col] = "Low"
-        elif "close" in lower:
-            col_mapping[col] = "Close"
-        elif "volume_(btc)" in lower or "volume_btc" in lower:
-            col_mapping[col] = "Volume_BTC"
-        elif "volume_(currency)" in lower or "volume_currency" in lower:
-            col_mapping[col] = "Volume_Currency"
-        elif "volume" in lower:
-            col_mapping[col] = "Volume"
-        elif "weighted" in lower:
-            col_mapping[col] = "Weighted_Price"
+    if fresh_start and fresh_start < int(time.time() * 1000):
+        df_fresh = fetch_full_history_binance(years=1) # Just check last year for updates
+        if not df_fresh.empty:
+            df_cached = pd.concat([df_cached, df_fresh])
+            df_cached = df_cached[~df_cached.index.duplicated(keep='last')].sort_index()
 
-    df.rename(columns=col_mapping, inplace=True)
-
-    logger.info(f"Loaded {len(df):,} rows, date range: {df.index.min()} to {df.index.max()}")
-    return df
-
+    # Save to cache
+    if not df_cached.empty:
+        df_cached.to_csv(CACHE_PATH)
+        logger.info(f"Updated cache with {len(df_cached)} total records.")
+        
+    return df_cached
 
 def resample_to_daily(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -188,20 +214,11 @@ def resample_to_daily(df: pd.DataFrame) -> pd.DataFrame:
                 f"date range: {daily.index.min().date()} to {daily.index.max().date()}")
     return daily
 
+def load_raw_data(csv_path: str = None) -> pd.DataFrame:
+    """Legacy: redirected to API-based loading."""
+    return load_daily_data(csv_path)
 
-def load_daily_data(csv_path: str = None) -> pd.DataFrame:
-    """
-    Convenience function: load raw data and resample to daily.
 
-    Args:
-        csv_path: Path to the CSV file.
-
-    Returns:
-        Daily OHLCV DataFrame ready for feature engineering.
-    """
-    raw = load_raw_data(csv_path)
-    daily = resample_to_daily(raw)
-    return daily
 
 
 def load_from_coingecko_ohlc(candles: list) -> pd.DataFrame:

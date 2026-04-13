@@ -238,11 +238,13 @@ class RidgePredictor:
             current_scaled = self.scaler.transform(current_features)
             raw = float(self.model.predict(current_scaled)[0])
 
-            price = float(np.exp(np.clip(raw, -30.0, 40.0))) if self.log_target else max(raw, 0.0)
-
+            price = float(np.exp(np.clip(raw, -30.0, 40.0))) if self.log_target else raw
+            
+            # Enforce logical constraints: lower <= price <= upper, and all >= 0
+            price = max(price, 0.0)
             lower = max(price - margin, 0.0)
             upper = max(price + margin, price)
-            price = max(price, 0.0)
+
 
             predictions.append(
                 {
