@@ -7,6 +7,7 @@ A full-stack analytical tool that bridges raw financial data and actionable mach
 ![Frontend: React + ApexCharts](https://img.shields.io/badge/Frontend-React%20%2B%20ApexCharts-purple)
 
 ---
+# For live demonstration check the link - https://www.loom.com/share/71a4a1c7f0f347f796a7b89f716208a2
 
 ## 📋 Table of Contents
 
